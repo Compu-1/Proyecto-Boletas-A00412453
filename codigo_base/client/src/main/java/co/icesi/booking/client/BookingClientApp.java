@@ -8,6 +8,7 @@ import com.zeroc.Ice.Util;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class BookingClientApp {
 
@@ -228,20 +229,23 @@ public class BookingClientApp {
     }
 
     // =========================================================================
-    // [PRUEBA DE ESTRÉS DE CONCURRENCIA]
-    // Demuestra empíricamente la condición de carrera en el servidor.
-    // Lanza 10 hilos simultáneos que compiten por bloquear exactamente la MISMA
-    // silla.
-    // Con la vulnerabilidad presente, más de un hilo reportará bloqueo exitoso.
+    // [PRUEBA DE ESTRÉS DE CONCURRENCIA - AMPLIADA PARA TAREA A7]
+    // 1. Evalúa race condition en lockSeat (10 hilos simultáneos).
+    // 2. Evalúa concurrencia y validación en confirmBooking y releaseSeat.
+    // 3. Verifica invariante de aforo (suma = 90) y máximo 1 venta por silla.
     // =========================================================================
     private static void runConcurrencyTest(BookingServicePrx service, String targetSeatId) {
         System.out.println("\n==========================================================================");
-        System.out.printf("  PRUEBA DE CONCURRENCIA: 10 HILOS COMPITIENDO POR LA SILLA '%s' %n", targetSeatId);
+        System.out.printf("  PRUEBA DE CONCURRENCIA INTEGRAL: SILLA '%s' %n", targetSeatId);
         System.out.println("==========================================================================");
 
-        // Reiniciar silla primero
+        // Reiniciar inventario para asegurar estado limpio
         service.resetSeats();
 
+        // ---------------------------------------------------------------------
+        // FASE 1: 10 hilos compitiendo por lockSeat()
+        // ---------------------------------------------------------------------
+        System.out.println("\n--- FASE 1: 10 HILOS COMPITIENDO POR lockSeat() ---");
         int numThreads = 10;
         ExecutorService executor = Executors.newFixedThreadPool(numThreads);
         CountDownLatch startLatch = new CountDownLatch(1);
@@ -249,6 +253,7 @@ public class BookingClientApp {
 
         AtomicInteger successLocks = new AtomicInteger(0);
         AtomicInteger rejectedLocks = new AtomicInteger(0);
+        AtomicReference<String> winnerClientId = new AtomicReference<>(null);
 
         for (int i = 1; i <= numThreads; i++) {
             final String threadClientId = "CONCURRENT-CLIENT-" + i;
@@ -258,6 +263,7 @@ public class BookingClientApp {
                     LockResult res = service.lockSeat(targetSeatId, threadClientId);
                     if (res.success) {
                         successLocks.incrementAndGet();
+                        winnerClientId.compareAndSet(null, threadClientId);
                         System.out.printf("   [+] %s: ¡Bloqueo exitoso! (Expira: %d)%n", threadClientId, res.expiresAt);
                     }
                 } catch (SeatNotAvailableException e) {
@@ -272,7 +278,7 @@ public class BookingClientApp {
         }
 
         System.out.println("[INFO] Disparando 10 peticiones simultáneas...");
-        startLatch.countDown(); // Señal de salida instantánea para todos los hilos
+        startLatch.countDown(); // Señal de salida instantánea
 
         try {
             doneLatch.await(5, TimeUnit.SECONDS);
@@ -281,18 +287,137 @@ public class BookingClientApp {
 
         executor.shutdown();
 
-        System.out.println("\n--- RESULTADOS DE LA PRUEBA CONCURRENTE ---");
+        System.out.println("\n--- RESULTADOS FASE 1 (lockSeat) ---");
         System.out.printf("Peticiones que creyeron ganar el bloqueo : %d%n", successLocks.get());
         System.out.printf("Peticiones correctamente rechazadas     : %d%n", rejectedLocks.get());
 
         if (successLocks.get() > 1) {
-            System.out.println(" [VULNERABILIDAD CONFIRMADA]: ¡CONDICIÓN DE CARRERA DETECTADA!");
+            System.out.println(" [VULNERABILIDAD CONFIRMADA]: ¡CONDICIÓN DE CARRERA DETECTADA EN lockSeat!");
             System.out.printf("   Más de un cliente (%d) logró bloquear la misma silla simultáneamente.%n",
                     successLocks.get());
-            System.out.println("   Causa: Ausencia de sincronización atómica en 'lockSeat()' del servidor.");
-            System.out.println("   Misión del estudiante: Implementar sincronización thread-safe en Java.");
+            System.out.println("==========================================================================\n");
+            return;
+        } else if (successLocks.get() == 0) {
+            System.out.println(" [ERROR]: Ningún hilo pudo bloquear la silla. Abortando fases posteriores.");
+            System.out.println("==========================================================================\n");
+            return;
+        }
+
+        System.out.printf(" [SIN CONDICIÓN DE CARRERA]: Solo 1 hilo (%s) obtuvo el bloqueo.%n", winnerClientId.get());
+
+        // ---------------------------------------------------------------------
+        // FASE 2: Concurrencia en confirmBooking y releaseSeat
+        // ---------------------------------------------------------------------
+        System.out.println("\n--- FASE 2: CONCURRENCIA EN confirmBooking Y releaseSeat ---");
+        String winner = winnerClientId.get();
+
+        // 2.1 Intento de compra fraudulenta con cliente no poseedor
+        String loserClientId = "CONCURRENT-CLIENT-LOSER";
+        for (int i = 1; i <= numThreads; i++) {
+            String cid = "CONCURRENT-CLIENT-" + i;
+            if (!cid.equals(winner)) {
+                loserClientId = cid;
+                break;
+            }
+        }
+        System.out.printf("[INFO] Intentando compra con cliente no poseedor (%s)...%n", loserClientId);
+        try {
+            service.confirmBooking(new String[]{targetSeatId}, loserClientId, "Impostor", "impostor@icesi.edu.co");
+            System.out.println("   [!] FALLO DE SEGURIDAD: Cliente no poseedor logró confirmar la compra.");
+        } catch (BookingException e) {
+            System.out.printf("   [+] Compra no autorizada rechazada correctamente: %s%n", e.reason);
+        } catch (Exception e) {
+            System.out.printf("   [+] Compra no autorizada rechazada con excepción: %s%n", e.getMessage());
+        }
+
+        // 2.2 Carrera real entre confirmBooking() y releaseSeat() por parte del cliente legítimo
+        System.out.println("[INFO] Lanzando carrera simultánea entre confirmBooking() y releaseSeat()...");
+        ExecutorService raceExecutor = Executors.newFixedThreadPool(2);
+        CountDownLatch raceStartLatch = new CountDownLatch(1);
+        CountDownLatch raceDoneLatch = new CountDownLatch(2);
+
+        AtomicInteger confirmWins = new AtomicInteger(0);
+        AtomicInteger releaseWins = new AtomicInteger(0);
+        AtomicReference<String> bookingCodeRef = new AtomicReference<>(null);
+
+        // Hilo A: Intenta confirmar compra
+        raceExecutor.submit(() -> {
+            try {
+                raceStartLatch.await();
+                BookingResult bRes = service.confirmBooking(new String[]{targetSeatId}, winner, "Ganador Carrera", "ganador@icesi.edu.co");
+                if (bRes != null && bRes.bookingCode != null) {
+                    confirmWins.incrementAndGet();
+                    bookingCodeRef.set(bRes.bookingCode);
+                    System.out.printf("   [+] confirmBooking completada con éxito. Código: %s%n", bRes.bookingCode);
+                }
+            } catch (Exception e) {
+                System.out.printf("   [-] confirmBooking rechazada/falló: %s%n", e.getMessage());
+            } finally {
+                raceDoneLatch.countDown();
+            }
+        });
+
+        // Hilo B: Intenta liberar silla
+        raceExecutor.submit(() -> {
+            try {
+                raceStartLatch.await();
+                boolean relOk = service.releaseSeat(targetSeatId, winner);
+                if (relOk) {
+                    releaseWins.incrementAndGet();
+                    System.out.println("   [+] releaseSeat completada con éxito. Silla liberada.");
+                } else {
+                    System.out.println("   [-] releaseSeat retornó false (silla ya vendida o no bloqueada).");
+                }
+            } catch (Exception e) {
+                System.out.printf("   [-] releaseSeat lanzó excepción: %s%n", e.getMessage());
+            } finally {
+                raceDoneLatch.countDown();
+            }
+        });
+
+        // Disparo de la carrera
+        raceStartLatch.countDown();
+
+        try {
+            raceDoneLatch.await(5, TimeUnit.SECONDS);
+        } catch (InterruptedException ignored) {
+        }
+        raceExecutor.shutdown();
+
+        // ---------------------------------------------------------------------
+        // FASE 3: Verificación de Invariantes y Aforo Total
+        // ---------------------------------------------------------------------
+        System.out.println("\n--- FASE 3: VERIFICACIÓN DE INVARIANTES Y AFORO TOTAL ---");
+        Seat finalSeat;
+        try {
+            finalSeat = service.getSeat(targetSeatId);
+        } catch (Exception e) {
+            System.err.println("[ERROR] No se pudo consultar la silla: " + e.getMessage());
+            return;
+        }
+
+        EventInfo eventInfo = service.getEventInfo();
+        int calculatedSum = eventInfo.availableSeats + eventInfo.lockedSeats + eventInfo.bookedSeats;
+
+        System.out.printf("Estado final de silla '%s': %s%n", targetSeatId, finalSeat.state);
+        System.out.printf("Aforo: Disponibles=%d | Bloqueadas=%d | Vendidas=%d | Suma=%d (Total=%d)%n",
+                eventInfo.availableSeats, eventInfo.lockedSeats, eventInfo.bookedSeats, calculatedSum, eventInfo.totalSeats);
+
+        boolean aforoOk = (calculatedSum == eventInfo.totalSeats && calculatedSum == 90);
+        boolean stateConsistent = (finalSeat.state == SeatState.BOOKED && confirmWins.get() == 1 && releaseWins.get() == 0) ||
+                                  (finalSeat.state == SeatState.AVAILABLE && releaseWins.get() == 1 && confirmWins.get() == 0);
+        boolean lockRaceOk = (successLocks.get() == 1);
+
+        if (lockRaceOk && aforoOk && stateConsistent) {
+            System.out.println("\n [OK - PRUEBA INTEGRAL SUPERADA CON ÉXITO]");
+            System.out.println("   1. lockSeat: Exactamente 1 cliente obtuvo el bloqueo (sin doble bloqueo).");
+            System.out.println("   2. confirmBooking / releaseSeat: Exclusión mutua atómica respetada (máximo 1 resultado).");
+            System.out.printf("   3. Invariante de aforo: Suma exacta de %d sillas (%d disponibles + %d bloqueadas + %d vendidas).%n",
+                    calculatedSum, eventInfo.availableSeats, eventInfo.lockedSeats, eventInfo.bookedSeats);
+            System.out.println("   4. Máximo 1 venta por silla y sin sobreventa.");
         } else {
-            System.out.println(" [SIN CONDICIÓN DE CARRERA]: Solo 1 hilo obtuvo el bloqueo. Servidor seguro.");
+            System.out.println("\n [ALERTA - INCONSISTENCIA DETECTADA]");
+            System.out.printf("   lockRaceOk=%b, aforoOk=%b, stateConsistent=%b%n", lockRaceOk, aforoOk, stateConsistent);
         }
         System.out.println("==========================================================================\n");
     }
