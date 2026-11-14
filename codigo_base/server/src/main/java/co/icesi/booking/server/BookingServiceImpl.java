@@ -194,10 +194,11 @@ public class BookingServiceImpl implements BookingService {
 
         // Solo puede liberar el cliente que la bloqueó o si ya expiró
         if (seat.state == SeatState.LOCKED) {
-            if (clientId.equals(seat.lockedByClientId) || isLockExpired(seat)) {
+            if ((clientId != null && clientId.equals(seat.lockedByClientId)) || isLockExpired(seat)) {
                 seat.state = SeatState.AVAILABLE;
                 seat.lockedByClientId = "";
                 seat.lockTimestamp = 0L;
+                updateEventCounters();
                 System.out.printf("[RELEASE-OK] Silla %s liberada por cliente: %s%n", seatId, clientId);
                 return true;
             }
