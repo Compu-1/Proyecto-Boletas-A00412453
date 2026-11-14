@@ -29,19 +29,18 @@ public class BookingServiceImpl implements BookingService {
 
     public static final long DEFAULT_LOCK_DURATION_SECONDS = 90;
 
-    private final EventInfo eventInfo;
+    public static final String EVENT_ID = "EVT-2026-LIVE";
+    public static final String EVENT_NAME = "Concierto Icesi Live Rock & Pop 2026";
+    public static final String EVENT_DATE = "2026-11-28 20:00";
+    public static final String EVENT_VENUE = "Auditorio Manuelita - Universidad Icesi";
+    public static final double PRICE_VIP = 120000.0;
+    public static final double PRICE_PLATEA = 75000.0;
+    public static final double PRICE_GENERAL = 45000.0;
+
     private final Map<String, Seat> seatsMap = new HashMap<>();
     private final List<BookingRecord> bookingsList = new ArrayList<>();
 
     public BookingServiceImpl() {
-        this.eventInfo = new EventInfo(
-                "EVT-2026-LIVE",
-                "Concierto Icesi Live Rock & Pop 2026",
-                "2026-11-28 20:00",
-                "Auditorio Manuelita - Universidad Icesi",
-                90, 90, 0, 0,
-                120000.0, 75000.0, 45000.0
-        );
         initSeats();
     }
 
@@ -49,19 +48,18 @@ public class BookingServiceImpl implements BookingService {
         seatsMap.clear();
         bookingsList.clear();
 
-        createSeatsForZone("A", 1, 10, SeatZone.ZONEVIP, 120000.0);
-        createSeatsForZone("B", 1, 10, SeatZone.ZONEVIP, 120000.0);
+        createSeatsForZone("A", 1, 10, SeatZone.ZONEVIP, PRICE_VIP);
+        createSeatsForZone("B", 1, 10, SeatZone.ZONEVIP, PRICE_VIP);
 
-        createSeatsForZone("C", 1, 10, SeatZone.ZONEPLATEA, 75000.0);
-        createSeatsForZone("D", 1, 10, SeatZone.ZONEPLATEA, 75000.0);
-        createSeatsForZone("E", 1, 10, SeatZone.ZONEPLATEA, 75000.0);
+        createSeatsForZone("C", 1, 10, SeatZone.ZONEPLATEA, PRICE_PLATEA);
+        createSeatsForZone("D", 1, 10, SeatZone.ZONEPLATEA, PRICE_PLATEA);
+        createSeatsForZone("E", 1, 10, SeatZone.ZONEPLATEA, PRICE_PLATEA);
 
-        createSeatsForZone("F", 1, 10, SeatZone.ZONEGENERAL, 45000.0);
-        createSeatsForZone("G", 1, 10, SeatZone.ZONEGENERAL, 45000.0);
-        createSeatsForZone("H", 1, 10, SeatZone.ZONEGENERAL, 45000.0);
-        createSeatsForZone("I", 1, 10, SeatZone.ZONEGENERAL, 45000.0);
+        createSeatsForZone("F", 1, 10, SeatZone.ZONEGENERAL, PRICE_GENERAL);
+        createSeatsForZone("G", 1, 10, SeatZone.ZONEGENERAL, PRICE_GENERAL);
+        createSeatsForZone("H", 1, 10, SeatZone.ZONEGENERAL, PRICE_GENERAL);
+        createSeatsForZone("I", 1, 10, SeatZone.ZONEGENERAL, PRICE_GENERAL);
 
-        updateEventCounters();
         System.out.printf("[INFO] Inventario inicializado con %d sillas en 3 zonas (VIP, Platea, General).%n", seatsMap.size());
     }
 
@@ -83,6 +81,40 @@ public class BookingServiceImpl implements BookingService {
         }
     }
 
+    /**
+     * Genera una copia defensiva de una silla para no exponer referencias internas mutables.
+     */
+    private Seat copySeat(Seat s) {
+        return new Seat(
+                s.id,
+                s.zone,
+                s.row,
+                s.number,
+                s.price,
+                s.state,
+                s.lockedByClientId,
+                s.lockTimestamp,
+                s.lockDurationSeconds
+        );
+    }
+
+    /**
+     * Genera una copia defensiva de un registro de reserva para asegurar consistencia e inmutabilidad externa.
+     */
+    private BookingRecord copyBookingRecord(BookingRecord b) {
+        String[] seatIdsCopy = b.seatIds != null ? b.seatIds.clone() : new String[0];
+        return new BookingRecord(
+                b.bookingCode,
+                b.eventId,
+                b.clientId,
+                b.customerName,
+                b.customerEmail,
+                seatIdsCopy,
+                b.totalAmount,
+                b.timestamp
+        );
+    }
+
     private boolean isLockExpired(Seat seat) {
         if (seat.state != SeatState.LOCKED) return false;
         long elapsedSeconds = (System.currentTimeMillis() - seat.lockTimestamp) / 1000L;
@@ -96,51 +128,58 @@ public class BookingServiceImpl implements BookingService {
      * automática de sillas vencidas (RF-3).
      */
     private void cleanExpiredLocks() {
-        boolean changed = false;
         for (Seat s : seatsMap.values()) {
             if (s.state == SeatState.LOCKED && isLockExpired(s)) {
                 s.state = SeatState.AVAILABLE;
                 s.lockedByClientId = "";
                 s.lockTimestamp = 0L;
-                changed = true;
                 System.out.printf("[AUTO-RELEASE] Bloqueo expirado liberado automáticamente para la silla: %s%n", s.id);
             }
         }
-        if (changed) {
-            updateEventCounters();
-        }
     }
 
-    private void updateEventCounters() {
+    @Override
+    public synchronized EventInfo getEventInfo(Current current) {
+        cleanExpiredLocks();
+
         int avail = 0;
         int locked = 0;
         int booked = 0;
         for (Seat s : seatsMap.values()) {
             if (s.state == SeatState.BOOKED) {
                 booked++;
-            } else if (s.state == SeatState.LOCKED && !isLockExpired(s)) {
+            } else if (s.state == SeatState.LOCKED) {
                 locked++;
             } else {
                 avail++;
             }
         }
-        eventInfo.totalSeats = seatsMap.size();
-        eventInfo.availableSeats = avail;
-        eventInfo.lockedSeats = locked;
-        eventInfo.bookedSeats = booked;
-    }
+        int total = seatsMap.size();
 
-    @Override
-    public synchronized EventInfo getEventInfo(Current current) {
-        cleanExpiredLocks();
-        updateEventCounters();
-        return eventInfo;
+        // Devuelve una nueva instancia de EventInfo calculada bajo el lock
+        // Invariante de aforo: avail + locked + booked == total (90 siempre)
+        return new EventInfo(
+                EVENT_ID,
+                EVENT_NAME,
+                EVENT_DATE,
+                EVENT_VENUE,
+                total,
+                avail,
+                locked,
+                booked,
+                PRICE_VIP,
+                PRICE_PLATEA,
+                PRICE_GENERAL
+        );
     }
 
     @Override
     public synchronized Seat[] getAllSeats(Current current) {
         cleanExpiredLocks();
-        List<Seat> list = new ArrayList<>(seatsMap.values());
+        List<Seat> list = new ArrayList<>(seatsMap.size());
+        for (Seat s : seatsMap.values()) {
+            list.add(copySeat(s));
+        }
         list.sort(Comparator.comparing((Seat s) -> s.row).thenComparingInt(s -> s.number));
         return list.toArray(new Seat[0]);
     }
@@ -151,7 +190,7 @@ public class BookingServiceImpl implements BookingService {
         List<Seat> list = new ArrayList<>();
         for (Seat s : seatsMap.values()) {
             if (s.zone == zone) {
-                list.add(s);
+                list.add(copySeat(s));
             }
         }
         list.sort(Comparator.comparing((Seat s) -> s.row).thenComparingInt(s -> s.number));
@@ -165,7 +204,7 @@ public class BookingServiceImpl implements BookingService {
         if (seat == null) {
             throw new SeatNotFoundException("Silla no encontrada en inventario: " + seatId);
         }
-        return seat;
+        return copySeat(seat);
     }
 
     @Override
@@ -230,7 +269,6 @@ public class BookingServiceImpl implements BookingService {
                 seat.state = SeatState.AVAILABLE;
                 seat.lockedByClientId = "";
                 seat.lockTimestamp = 0L;
-                updateEventCounters();
                 System.out.printf("[RELEASE-OK] Silla %s liberada por cliente: %s%n", seatId, clientId);
                 return true;
             }
@@ -331,18 +369,15 @@ public class BookingServiceImpl implements BookingService {
 
         BookingRecord record = new BookingRecord(
                 bookingCode,
-                eventInfo.id,
+                EVENT_ID,
                 clientId,
                 customerName.trim(),
                 customerEmail.trim(),
-                seatIds,
+                seatIds.clone(),
                 totalAmount,
                 now
         );
         bookingsList.add(record);
-
-        // Actualizar contadores del evento de forma atómica
-        updateEventCounters();
 
         System.out.printf("[BOOKING-CONFIRMED] Código: %s | Cliente: %s (%s) | %d sillas | Total: $%,.0f COP%n",
                 bookingCode, customerName.trim(), clientId, seatIds.length, totalAmount);
@@ -364,7 +399,7 @@ public class BookingServiceImpl implements BookingService {
         if (clientId != null && !clientId.isEmpty()) {
             for (Seat s : seatsMap.values()) {
                 if (s.state == SeatState.LOCKED && clientId.equals(s.lockedByClientId)) {
-                    list.add(s);
+                    list.add(copySeat(s));
                 }
             }
         }
@@ -377,7 +412,7 @@ public class BookingServiceImpl implements BookingService {
         if (clientId != null && !clientId.isEmpty()) {
             for (BookingRecord b : bookingsList) {
                 if (clientId.equals(b.clientId)) {
-                    list.add(b);
+                    list.add(copyBookingRecord(b));
                 }
             }
         }
