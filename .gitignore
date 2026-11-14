@@ -1,0 +1,15 @@
+# Dependencias y artefactos de compilación frontend
+client-js/node_modules/
+client-js/dist/
+dist/
+
+# Dependencias y compilación backend Gradle/Java
+codigo_base/.gradle/
+codigo_base/**/build/
+
+# Archivos de entorno y de IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
