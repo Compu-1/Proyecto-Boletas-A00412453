@@ -3,8 +3,10 @@ package co.icesi.booking.server;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import com.zeroc.Ice.Current;
@@ -210,46 +212,73 @@ public class BookingServiceImpl implements BookingService {
     public synchronized BookingResult confirmBooking(String[] seatIds, String clientId, String customerName, String customerEmail, Current current)
             throws InvalidBookingException, BookingException {
 
+        // Validación de datos del cliente y parámetros generales
+        if (clientId == null || clientId.trim().isEmpty()) {
+            throw new InvalidBookingException("El identificador del cliente es obligatorio.");
+        }
         if (seatIds == null || seatIds.length == 0) {
             throw new InvalidBookingException("Debe seleccionar al menos una silla para completar la reserva.");
         }
         if (customerName == null || customerName.trim().isEmpty()) {
             throw new InvalidBookingException("El nombre del comprador es obligatorio.");
         }
-        if (customerEmail == null || !customerEmail.contains("@")) {
+        if (customerEmail == null || customerEmail.trim().isEmpty() || !customerEmail.matches("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")) {
             throw new InvalidBookingException("El correo electrónico del comprador es inválido.");
         }
 
         double totalAmount = 0.0;
         List<Seat> validatedSeats = new ArrayList<>();
+        Set<String> seenSeatIds = new HashSet<>();
 
-        // Paso 1: Validación preliminar de las sillas
+        // Paso 1: Validación preliminar estricta de todas las sillas (Todo o Nada)
+        // Si cualquier silla falla la validación, se lanza una excepción y NINGUNA silla pasa a BOOKED.
         for (String seatId : seatIds) {
-            Seat seat = seatsMap.get(seatId);
+            if (seatId == null || seatId.trim().isEmpty()) {
+                throw new InvalidBookingException("El identificador de silla no puede ser nulo o vacío.");
+            }
+            String cleanSeatId = seatId.trim();
+
+            // Requisito 4: Rechazar seatIds duplicados en la misma petición
+            if (!seenSeatIds.add(cleanSeatId)) {
+                throw new InvalidBookingException("No se permiten identificadores de sillas duplicados en la reserva: " + cleanSeatId);
+            }
+
+            Seat seat = seatsMap.get(cleanSeatId);
             if (seat == null) {
-                throw new SeatNotFoundException("Silla no existe: " + seatId);
+                throw new SeatNotFoundException("Silla no encontrada en inventario: " + cleanSeatId);
             }
-            if (seat.state == SeatState.BOOKED) {
-                throw new BookingException("La silla " + seatId + " ya fue vendida definitivamente.");
-            }
-            if (seat.state == SeatState.LOCKED) {
-                if (isLockExpired(seat)) {
-                    throw new LockExpiredException("El bloqueo temporal de la silla " + seatId + " ha expirado.");
+
+            // Requisito 3: Cada silla debe estar LOCKED; una silla AVAILABLE o BOOKED debe rechazarse
+            if (seat.state != SeatState.LOCKED) {
+                if (seat.state == SeatState.BOOKED) {
+                    throw new BookingException("La silla " + cleanSeatId + " ya fue vendida definitivamente.");
+                } else {
+                    // Estado AVAILABLE: rechazar de inmediato
+                    throw new BookingException("La silla " + cleanSeatId + " no está bloqueada. Debe bloquearla antes de confirmar la compra.");
                 }
-                if (!clientId.equals(seat.lockedByClientId)) {
-                    throw new BookingException("La silla " + seatId + " se encuentra bloqueada por otro comprador.");
-                }
             }
+
+            // La silla está en estado LOCKED: verificar que pertenezca a este clientId y que el bloqueo esté vigente
+            if (isLockExpired(seat)) {
+                throw new LockExpiredException("El bloqueo temporal de la silla " + cleanSeatId + " ha expirado.");
+            }
+            if (!clientId.equals(seat.lockedByClientId)) {
+                throw new BookingException("La silla " + cleanSeatId + " se encuentra bloqueada por otro comprador.");
+            }
+
             totalAmount += seat.price;
             validatedSeats.add(seat);
         }
 
-        // Paso 2: Confirmación y cambio a BOOKED (Proceso no atómico)
+        // Paso 2: Confirmación atómica dentro de la misma sección crítica
+        // Una vez superadas todas las validaciones sin fallo, se aplican los cambios
         for (Seat s : validatedSeats) {
             s.state = SeatState.BOOKED;
             s.lockedByClientId = clientId;
+            s.lockTimestamp = 0L;
         }
 
+        // Requisito 6: Código de reserva y registro en bookingsList dentro de la misma sección crítica
         String bookingCode = "RES-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         long now = System.currentTimeMillis();
 
@@ -265,8 +294,11 @@ public class BookingServiceImpl implements BookingService {
         );
         bookingsList.add(record);
 
+        // Actualizar contadores del evento de forma atómica
+        updateEventCounters();
+
         System.out.printf("[BOOKING-CONFIRMED] Código: %s | Cliente: %s (%s) | %d sillas | Total: $%,.0f COP%n",
-                bookingCode, customerName, clientId, seatIds.length, totalAmount);
+                bookingCode, customerName.trim(), clientId, seatIds.length, totalAmount);
 
         return new BookingResult(
                 true,
