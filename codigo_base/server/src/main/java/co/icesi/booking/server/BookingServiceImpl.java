@@ -89,6 +89,28 @@ public class BookingServiceImpl implements BookingService {
         return elapsedSeconds > seat.lockDurationSeconds;
     }
 
+    /**
+     * Limpieza perezosa (Lazy Cleanup) de bloqueos expirados.
+     * Se invoca dentro del cerrojo synchronized al inicio de cada operación
+     * para asegurar que el inventario, aforos y estados reflejen la liberación
+     * automática de sillas vencidas (RF-3).
+     */
+    private void cleanExpiredLocks() {
+        boolean changed = false;
+        for (Seat s : seatsMap.values()) {
+            if (s.state == SeatState.LOCKED && isLockExpired(s)) {
+                s.state = SeatState.AVAILABLE;
+                s.lockedByClientId = "";
+                s.lockTimestamp = 0L;
+                changed = true;
+                System.out.printf("[AUTO-RELEASE] Bloqueo expirado liberado automáticamente para la silla: %s%n", s.id);
+            }
+        }
+        if (changed) {
+            updateEventCounters();
+        }
+    }
+
     private void updateEventCounters() {
         int avail = 0;
         int locked = 0;
@@ -110,12 +132,14 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     public synchronized EventInfo getEventInfo(Current current) {
+        cleanExpiredLocks();
         updateEventCounters();
         return eventInfo;
     }
 
     @Override
     public synchronized Seat[] getAllSeats(Current current) {
+        cleanExpiredLocks();
         List<Seat> list = new ArrayList<>(seatsMap.values());
         list.sort(Comparator.comparing((Seat s) -> s.row).thenComparingInt(s -> s.number));
         return list.toArray(new Seat[0]);
@@ -123,6 +147,7 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     public synchronized Seat[] getSeatsByZone(SeatZone zone, Current current) {
+        cleanExpiredLocks();
         List<Seat> list = new ArrayList<>();
         for (Seat s : seatsMap.values()) {
             if (s.zone == zone) {
@@ -135,6 +160,7 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     public synchronized Seat getSeat(String seatId, Current current) throws SeatNotFoundException {
+        cleanExpiredLocks();
         Seat seat = seatsMap.get(seatId);
         if (seat == null) {
             throw new SeatNotFoundException("Silla no encontrada en inventario: " + seatId);
@@ -145,6 +171,8 @@ public class BookingServiceImpl implements BookingService {
     @Override
     public synchronized LockResult lockSeat(String seatId, String clientId, Current current)
             throws SeatNotFoundException, SeatNotAvailableException {
+
+        cleanExpiredLocks();
 
         Seat seat = seatsMap.get(seatId);
         if (seat == null) {
@@ -189,6 +217,8 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     public synchronized boolean releaseSeat(String seatId, String clientId, Current current) throws SeatNotFoundException {
+        cleanExpiredLocks();
+
         Seat seat = seatsMap.get(seatId);
         if (seat == null) {
             throw new SeatNotFoundException("Silla no encontrada: " + seatId);
@@ -211,6 +241,23 @@ public class BookingServiceImpl implements BookingService {
     @Override
     public synchronized BookingResult confirmBooking(String[] seatIds, String clientId, String customerName, String customerEmail, Current current)
             throws InvalidBookingException, BookingException {
+
+        // Si alguna de las sillas solicitadas ya expiró su bloqueo, reportar LockExpiredException
+        // específicamente antes de liberar el resto de bloqueos vencidos.
+        if (seatIds != null) {
+            for (String seatId : seatIds) {
+                if (seatId != null) {
+                    Seat s = seatsMap.get(seatId.trim());
+                    if (s != null && s.state == SeatState.LOCKED && isLockExpired(s)) {
+                        cleanExpiredLocks();
+                        throw new LockExpiredException("El bloqueo temporal de la silla " + s.id + " ha expirado.");
+                    }
+                }
+            }
+        }
+
+        // Limpieza de cualquier otro bloqueo expirado
+        cleanExpiredLocks();
 
         // Validación de datos del cliente y parámetros generales
         if (clientId == null || clientId.trim().isEmpty()) {
@@ -312,10 +359,11 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     public synchronized Seat[] getMyLockedSeats(String clientId, Current current) {
+        cleanExpiredLocks();
         List<Seat> list = new ArrayList<>();
         if (clientId != null && !clientId.isEmpty()) {
             for (Seat s : seatsMap.values()) {
-                if (s.state == SeatState.LOCKED && clientId.equals(s.lockedByClientId) && !isLockExpired(s)) {
+                if (s.state == SeatState.LOCKED && clientId.equals(s.lockedByClientId)) {
                     list.add(s);
                 }
             }
