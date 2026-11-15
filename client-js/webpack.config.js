@@ -5,7 +5,7 @@ module.exports = {
   entry: './src/index.js',
   output: {
     path: path.resolve(__dirname, 'dist'),
-    filename: 'bundle.[contenthash].js',
+    filename: 'bundle.js',
     clean: true,
   },
   module: {
@@ -18,16 +18,22 @@ module.exports = {
   },
   plugins: [
     new HtmlWebpackPlugin({
-      template: './public/index.html',
-      title: 'Icesi Live Arena — Reserva de Boletas',
+      template: './src/index.html',
+      title: 'Icesi Live Arena',
     }),
   ],
   devServer: {
     static: './dist',
     port: 3000,
-    open: false,
+    open: true,
     hot: true,
+    client: {
+      overlay: false,
+    },
   },
+  ignoreWarnings: [
+    /Critical dependency: require function is used in a way in which dependencies cannot be statically extracted/,
+  ],
   resolve: {
     extensions: ['.js'],
     fallback: {

@@ -16,13 +16,11 @@
 /* eslint-disable */
 /* jshint ignore: start */
 
-(function(module, require, exports)
-{
-    const Ice = require("ice").Ice;
-    const _ModuleRegistry = Ice._ModuleRegistry;
-    const Slice = Ice.Slice;
+const Ice = require("ice").Ice;
+const _ModuleRegistry = Ice._ModuleRegistry;
+const Slice = Ice.Slice;
 
-    let BookingApp = _ModuleRegistry.module("BookingApp");
+let BookingApp = _ModuleRegistry.module("BookingApp");
 
     BookingApp.SeatZone = Slice.defineEnum([
         ['ZONEVIP', 0], ['ZONEPLATEA', 1], ['ZONEGENERAL', 2]]);
@@ -429,9 +427,6 @@
         "resetSeats": [, , , , , , , , , ]
     });
     exports.BookingApp = BookingApp;
-}
-(typeof(global) !== "undefined" && typeof(global.process) !== "undefined" ? module : undefined,
- typeof(global) !== "undefined" && typeof(global.process) !== "undefined" ? require :
- (typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope) ? self.Ice._require : window.Ice._require,
- typeof(global) !== "undefined" && typeof(global.process) !== "undefined" ? exports :
- (typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope) ? self : window));
+    if (typeof window !== "undefined") {
+        window.BookingApp = BookingApp;
+    }
