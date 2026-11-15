@@ -4,6 +4,7 @@
  * y la cuenta regresiva visible del tiempo de bloqueo temporal.
  */
 import { store } from '../state/store.js';
+import { formatRemainingTime, getSeatExpiresAt } from '../utils/lockTimer.js';
 
 export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheckout, onTimerExpired) {
   const panel = document.createElement('aside');
@@ -40,7 +41,7 @@ export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheck
 
   const timerLabel = document.createElement('span');
   timerLabel.className = 'timer-label';
-  timerLabel.textContent = 'Tiempo para completar tu compra:';
+  timerLabel.textContent = 'Silla que vence primero:';
 
   const timerCountdown = document.createElement('span');
   timerCountdown.className = 'timer-countdown';
@@ -104,28 +105,11 @@ export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheck
   panel.appendChild(summaryBox);
   panel.appendChild(actionsBox);
 
-  // Lógica interna del temporizador con setInterval
+  // setInterval actualiza la pantalla; la expiración real la valida el servidor.
   let timerInterval = null;
-  let remainingSeconds = 0;
-
-  function startTimer(seconds) {
-    clearInterval(timerInterval);
-    remainingSeconds = seconds > 0 ? seconds : 90;
-    updateTimerDisplay();
-    timerWidget.style.display = 'flex';
-
-    timerInterval = setInterval(() => {
-      remainingSeconds--;
-      if (remainingSeconds <= 0) {
-        clearInterval(timerInterval);
-        timerInterval = null;
-        updateTimerDisplay();
-        if (onTimerExpired) onTimerExpired();
-      } else {
-        updateTimerDisplay();
-      }
-    }, 1000);
-  }
+  let activeSeats = [];
+  let countdownElements = new Map();
+  const reportedExpirations = new Map();
 
   function stopTimer() {
     clearInterval(timerInterval);
@@ -133,17 +117,61 @@ export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheck
     timerWidget.style.display = 'none';
   }
 
-  function updateTimerDisplay() {
-    const mins = Math.floor(Math.max(0, remainingSeconds) / 60);
-    const secs = Math.max(0, remainingSeconds) % 60;
-    const formatted = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    timerCountdown.textContent = formatted;
-
-    timerCountdown.classList.remove('timer-danger', 'timer-warning');
+  function setCountdownStyle(element, remainingSeconds) {
+    element.classList.remove('timer-danger', 'timer-warning');
     if (remainingSeconds <= 15) {
-      timerCountdown.classList.add('timer-danger');
+      element.classList.add('timer-danger');
     } else if (remainingSeconds <= 30) {
-      timerCountdown.classList.add('timer-warning');
+      element.classList.add('timer-warning');
+    }
+  }
+
+  function updateCountdowns() {
+    const now = Date.now();
+    let nearestRemainingSeconds = null;
+    let knownExpirationCount = 0;
+    const expiredSeatIds = [];
+
+    for (const seat of activeSeats) {
+      const countdown = countdownElements.get(seat.id);
+      const expiresAt = getSeatExpiresAt(seat);
+      if (!countdown || expiresAt === null) {
+        if (countdown) {
+          countdown.textContent = '--:--';
+          countdown.classList.remove('timer-danger', 'timer-warning');
+        }
+        continue;
+      }
+
+      knownExpirationCount++;
+      const remainingSeconds = Math.max(0, Math.ceil((expiresAt - now) / 1000));
+      countdown.textContent = formatRemainingTime(remainingSeconds);
+      setCountdownStyle(countdown, remainingSeconds);
+
+      if (remainingSeconds === 0) {
+        if (reportedExpirations.get(seat.id) !== expiresAt) {
+          reportedExpirations.set(seat.id, expiresAt);
+          expiredSeatIds.push(seat.id);
+        }
+      } else if (
+        nearestRemainingSeconds === null ||
+        remainingSeconds < nearestRemainingSeconds
+      ) {
+        nearestRemainingSeconds = remainingSeconds;
+      }
+    }
+
+    timerCountdown.textContent = nearestRemainingSeconds === null
+      ? (knownExpirationCount > 0 ? '00:00' : '--:--')
+      : formatRemainingTime(nearestRemainingSeconds);
+    if (knownExpirationCount > 0) {
+      setCountdownStyle(timerCountdown, nearestRemainingSeconds ?? 0);
+    } else {
+      timerCountdown.classList.remove('timer-danger', 'timer-warning');
+    }
+
+    if (expiredSeatIds.length > 0 && onTimerExpired) {
+      onTimerExpired(expiredSeatIds);
     }
   }
 
@@ -151,6 +179,8 @@ export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheck
   store.subscribe((state) => {
     const mySeats = state.myLockedSeats || [];
     countBadge.textContent = `${mySeats.length} ${mySeats.length === 1 ? 'silla' : 'sillas'}`;
+    activeSeats = mySeats;
+    countdownElements = new Map();
 
     if (mySeats.length === 0) {
       stopTimer();
@@ -166,12 +196,7 @@ export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheck
       return;
     }
 
-    // Hay sillas en el carrito
-    if (!timerInterval) {
-      // Iniciar cuenta de 90s (o el valor del estado si existe)
-      startTimer(state.lockRemainingSeconds > 0 ? state.lockRemainingSeconds : 90);
-    }
-
+    timerWidget.style.display = 'flex';
     itemsList.innerHTML = '';
     let total = 0;
 
@@ -187,6 +212,11 @@ export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheck
       const seatTitle = document.createElement('strong');
       seatTitle.textContent = `Silla ${seat.id}`;
 
+      const seatCountdown = document.createElement('span');
+      seatCountdown.className = 'cart-item-countdown';
+      seatCountdown.setAttribute('aria-label', `Tiempo restante de la silla ${seat.id}`);
+      countdownElements.set(seat.id, seatCountdown);
+
       const zoneBadge = document.createElement('span');
       zoneBadge.className = 'item-zone-badge';
       const zoneName = seat.zone === 0 ? 'VIP' : (seat.zone === 1 ? 'Platea' : 'General');
@@ -197,6 +227,7 @@ export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheck
       price.textContent = `$${seat.price.toLocaleString('es-CO')} COP`;
 
       info.appendChild(seatTitle);
+      info.appendChild(seatCountdown);
       info.appendChild(zoneBadge);
       info.appendChild(price);
 
@@ -205,6 +236,11 @@ export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheck
       removeBtn.innerHTML = '&times;';
       removeBtn.title = `Quitar silla ${seat.id} de la selección`;
       removeBtn.setAttribute('aria-label', `Quitar silla ${seat.id}`);
+      removeBtn.disabled = (state.pendingSeatIds || []).includes(seat.id);
+      if (removeBtn.disabled) {
+        removeBtn.setAttribute('aria-busy', 'true');
+        removeBtn.title = `Procesando liberación de la silla ${seat.id}`;
+      }
       removeBtn.addEventListener('click', () => {
         onReleaseSeat(seat.id);
       });
@@ -217,6 +253,11 @@ export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheck
     totalValue.textContent = `$${total.toLocaleString('es-CO')} COP`;
     checkoutBtn.disabled = false;
     clearBtn.style.display = 'block';
+
+    if (!timerInterval) {
+      timerInterval = setInterval(updateCountdowns, 1000);
+    }
+    updateCountdowns();
   });
 
   return panel;

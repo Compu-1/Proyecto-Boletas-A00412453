@@ -57,7 +57,6 @@ export const store = new Store({
   seats: [],
   myLockedSeats: [],
   myBookings: [],
-  lockRemainingSeconds: 0,
   isConnected: false,
   isLoading: true,
   isCheckoutOpen: false,
