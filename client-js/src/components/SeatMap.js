@@ -56,16 +56,17 @@ export function createSeatMap(onSeatToggle) {
   // Grid de sillas
   const gridContainer = document.createElement('div');
   gridContainer.className = 'seat-grid-container';
+  gridContainer.setAttribute('aria-label', 'Mapa interactivo de las sillas');
 
   // Leyenda de colores y estados
   const legend = document.createElement('div');
   legend.className = 'seatmap-legend';
 
   const legendItems = [
-    { label: 'Disponible', class: 'seat-available' },
-    { label: 'Tu Selección (Bloqueada)', class: 'seat-my-locked' },
-    { label: 'Bloqueada por otro', class: 'seat-other-locked' },
-    { label: 'Vendida', class: 'seat-booked' },
+    { label: 'Disponible', marker: 'D', class: 'seat-available zone-general' },
+    { label: 'Tuya (bloqueada)', marker: 'T', class: 'seat-my-locked' },
+    { label: 'De otra persona (bloqueada)', marker: 'O', class: 'seat-other-locked' },
+    { label: 'Vendida', marker: 'V', class: 'seat-booked' },
   ];
 
   for (const item of legendItems) {
@@ -74,6 +75,8 @@ export function createSeatMap(onSeatToggle) {
 
     const pill = document.createElement('span');
     pill.className = `legend-pill ${item.class}`;
+    pill.textContent = item.marker;
+    pill.setAttribute('aria-hidden', 'true');
 
     const txt = document.createElement('span');
     txt.textContent = item.label;
@@ -102,13 +105,26 @@ export function createSeatMap(onSeatToggle) {
 
     if (seats.length === 0) {
       const emptyMsg = document.createElement('div');
-      emptyMsg.className = 'seatmap-loading';
-      emptyMsg.textContent = state.isLoading ? 'Cargando silletería...' : 'No hay información de sillas disponible.';
+      emptyMsg.className = state.connectionError ? 'seatmap-error' : 'seatmap-loading';
+      emptyMsg.setAttribute('role', state.connectionError ? 'alert' : 'status');
+      emptyMsg.textContent = state.isLoading
+        ? 'Cargando silletería...'
+        : state.connectionError
+          ? `No se pudo cargar el mapa de sillas. ${state.connectionError}`
+          : 'No hay información de sillas disponible.';
       gridContainer.appendChild(emptyMsg);
       return;
     }
 
-    // Agrupar por filas (A hasta I)
+    if (state.connectionError) {
+      const staleDataNotice = document.createElement('div');
+      staleDataNotice.className = 'seatmap-error';
+      staleDataNotice.setAttribute('role', 'status');
+      staleDataNotice.textContent = `No se pudo actualizar el mapa. Se muestran los últimos datos recibidos. ${state.connectionError}`;
+      gridContainer.appendChild(staleDataNotice);
+    }
+
+    // Siempre se muestran las filas del plano; sus sillas provienen del servidor.
     const rowsMap = new Map();
     for (const seat of seats) {
       if (!rowsMap.has(seat.row)) {
@@ -117,14 +133,14 @@ export function createSeatMap(onSeatToggle) {
       rowsMap.get(seat.row).push(seat);
     }
 
-    const sortedRows = Array.from(rowsMap.keys()).sort();
+    const sortedRows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
+    const rowZone = (row) => row <= 'B' ? 'VIP' : row <= 'E' ? 'PLATEA' : 'GENERAL';
 
     for (const rowKey of sortedRows) {
-      const rowSeats = rowsMap.get(rowKey).sort((a, b) => a.number - b.number);
+      const rowSeats = (rowsMap.get(rowKey) || []).sort((a, b) => a.number - b.number);
 
       // Verificar si la fila coincide con el filtro de zona
-      const firstSeat = rowSeats[0];
-      const zoneName = getZoneName(firstSeat ? firstSeat.zone : 0);
+      const zoneName = rowZone(rowKey);
 
       if (currentZoneFilter !== 'ALL' && zoneName !== currentZoneFilter) {
         continue;
@@ -142,35 +158,41 @@ export function createSeatMap(onSeatToggle) {
       seatsWrapper.className = 'row-seats';
 
       for (const seat of rowSeats) {
-        const seatBtn = document.createElement('button');
-        seatBtn.className = 'seat-btn';
-        seatBtn.dataset.seatId = seat.id;
-        seatBtn.textContent = seat.number;
-
-        // Determinar estado visual
-        // 0: AVAILABLE, 1: LOCKED, 2: BOOKED
-        const stateValue = typeof seat.state === 'object' && seat.state._value !== undefined ? seat.state._value : seat.state;
+        const stateValue = getEnumValue(seat.state);
         const isMyLock = stateValue === 1 && seat.lockedByClientId === myClientId;
         const isOtherLock = stateValue === 1 && !isMyLock;
         const isBooked = stateValue === 2;
+        const stateLabel = isMyLock
+          ? 'Bloqueada por ti'
+          : isOtherLock
+            ? 'Bloqueada por otra persona'
+            : isBooked
+              ? 'Vendida'
+              : 'Disponible';
+        const marker = isMyLock ? 'T' : isOtherLock ? 'O' : isBooked ? 'V' : 'D';
+
+        const seatBtn = document.createElement('button');
+        seatBtn.className = 'seat-btn';
+        seatBtn.dataset.seatId = seat.id;
+        seatBtn.setAttribute('aria-label', `Silla ${seat.id}, ${stateLabel.toLowerCase()}`);
+        seatBtn.title = `Silla ${seat.id}: ${stateLabel}`;
+        seatBtn.textContent = seat.number;
+
+        const stateMarker = document.createElement('span');
+        stateMarker.className = 'seat-state-marker';
+        stateMarker.textContent = marker;
+        stateMarker.setAttribute('aria-hidden', 'true');
+        seatBtn.appendChild(stateMarker);
 
         if (isMyLock) {
           seatBtn.classList.add('seat-my-locked');
-          seatBtn.title = `Silla ${seat.id} (${zoneName}): En tu carrito ($${seat.price.toLocaleString('es-CO')}) - Haz clic para liberar`;
-          seatBtn.setAttribute('aria-label', `Silla ${seat.id}, seleccionada por ti`);
         } else if (isOtherLock) {
           seatBtn.classList.add('seat-other-locked');
-          seatBtn.title = `Silla ${seat.id} (${zoneName}): Bloqueada temporalmente por otro comprador`;
-          seatBtn.setAttribute('aria-label', `Silla ${seat.id}, bloqueada por otro comprador`);
         } else if (isBooked) {
           seatBtn.classList.add('seat-booked');
           seatBtn.disabled = true;
-          seatBtn.title = `Silla ${seat.id} (${zoneName}): Vendida definitivamente`;
-          seatBtn.setAttribute('aria-label', `Silla ${seat.id}, vendida`);
         } else {
           seatBtn.classList.add('seat-available', `zone-${zoneName.toLowerCase()}`);
-          seatBtn.title = `Silla ${seat.id} (${zoneName}): Disponible por $${seat.price.toLocaleString('es-CO')} - Haz clic para reservar`;
-          seatBtn.setAttribute('aria-label', `Silla ${seat.id}, disponible, precio $${seat.price}`);
         }
 
         seatBtn.addEventListener('click', () => {
@@ -182,14 +204,27 @@ export function createSeatMap(onSeatToggle) {
 
       rowDiv.appendChild(seatsWrapper);
       gridContainer.appendChild(rowDiv);
+
+      if (rowSeats.length !== 10) {
+        const rowNotice = document.createElement('p');
+        rowNotice.className = 'seatmap-row-warning';
+        rowNotice.textContent = `Fila ${rowKey}: se recibieron ${rowSeats.length} de 10 sillas.`;
+        gridContainer.appendChild(rowNotice);
+      }
+    }
+
+    if (seats.length !== 90) {
+      const inventoryNotice = document.createElement('p');
+      inventoryNotice.className = 'seatmap-row-warning';
+      inventoryNotice.textContent = `El servidor devolvió ${seats.length} de las 90 sillas esperadas.`;
+      gridContainer.appendChild(inventoryNotice);
     }
   }
 
-  function getZoneName(zoneEnum) {
-    const val = typeof zoneEnum === 'object' && zoneEnum._value !== undefined ? zoneEnum._value : zoneEnum;
-    if (val === 0) return 'VIP';
-    if (val === 1) return 'PLATEA';
-    return 'GENERAL';
+  function getEnumValue(value) {
+    return typeof value === 'object' && value !== null && value._value !== undefined
+      ? value._value
+      : value;
   }
 
   store.subscribe((state) => {

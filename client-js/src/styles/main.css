@@ -95,9 +95,41 @@ body {
 
 .event-meta {
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   color: var(--text-muted);
   font-size: 0.95rem;
+}
+
+.event-prices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.event-price {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  background: #f8fafc;
+  color: var(--text-dark);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.event-data-status {
+  flex-basis: 100%;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.event-data-status:empty {
+  display: none;
+}
+
+.event-data-error {
+  color: var(--danger);
 }
 
 /* Contadores de aforo */

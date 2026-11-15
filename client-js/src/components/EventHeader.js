@@ -41,7 +41,7 @@ export function createEventHeader(onRefresh, onToggleBookings) {
 
   const venueSpan = document.createElement('span');
   venueSpan.id = 'header-event-venue';
-  venueSpan.textContent = 'Lugar: Auditorio Manuelita';
+  venueSpan.textContent = 'Lugar: Consultando...';
 
   metaRow.appendChild(dateSpan);
   metaRow.appendChild(venueSpan);
@@ -49,6 +49,25 @@ export function createEventHeader(onRefresh, onToggleBookings) {
   titleGroup.appendChild(badgeRow);
   titleGroup.appendChild(title);
   titleGroup.appendChild(metaRow);
+
+  const prices = document.createElement('div');
+  prices.className = 'event-prices';
+  prices.setAttribute('aria-label', 'Precios por zona');
+
+  const priceItems = [
+    { label: 'VIP', key: 'vipPrice' },
+    { label: 'Platea', key: 'plateaPrice' },
+    { label: 'General', key: 'generalPrice' },
+  ];
+  const priceValues = new Map();
+  for (const item of priceItems) {
+    const price = document.createElement('span');
+    price.className = 'event-price';
+    price.textContent = `${item.label}: Consultando...`;
+    prices.appendChild(price);
+    priceValues.set(item.key, price);
+  }
+  titleGroup.appendChild(prices);
 
   // Sub-contenedor de contadores y acciones
   const actionsGroup = document.createElement('div');
@@ -104,6 +123,12 @@ export function createEventHeader(onRefresh, onToggleBookings) {
   header.appendChild(titleGroup);
   header.appendChild(actionsGroup);
 
+  const dataStatus = document.createElement('p');
+  dataStatus.className = 'event-data-status';
+  dataStatus.setAttribute('role', 'status');
+  dataStatus.setAttribute('aria-live', 'polite');
+  header.appendChild(dataStatus);
+
   // Suscripción al store para actualización reactiva del encabezado
   store.subscribe((state) => {
     if (state.clientId) {
@@ -113,15 +138,33 @@ export function createEventHeader(onRefresh, onToggleBookings) {
     if (state.eventInfo) {
       title.textContent = state.eventInfo.name || 'Icesi Live Arena';
       dateSpan.textContent = `📅 ${state.eventInfo.date || 'Por definir'}`;
-      venueSpan.textContent = `📍 ${state.eventInfo.venue || 'Auditorio Manuelita'}`;
+      venueSpan.textContent = `📍 ${state.eventInfo.venue || 'Por definir'}`;
 
-      const elAvail = header.querySelector('#count-available');
-      const elLocked = header.querySelector('#count-locked');
-      const elBooked = header.querySelector('#count-booked');
+      header.querySelector('#count-available').textContent = state.eventInfo.availableSeats;
+      header.querySelector('#count-locked').textContent = state.eventInfo.lockedSeats;
+      header.querySelector('#count-booked').textContent = state.eventInfo.bookedSeats;
 
-      if (elAvail) elAvail.textContent = state.eventInfo.availableSeats;
-      if (elLocked) elLocked.textContent = state.eventInfo.lockedSeats;
-      if (elBooked) elBooked.textContent = state.eventInfo.bookedSeats;
+      for (const item of priceItems) {
+        const price = state.eventInfo[item.key];
+        priceValues.get(item.key).textContent = `${item.label}: ${Number(price).toLocaleString('es-CO')} COP`;
+      }
+    } else {
+      for (const item of priceItems) {
+        priceValues.get(item.key).textContent = `${item.label}: --`;
+      }
+    }
+
+    if (state.isLoading && !state.eventInfo) {
+      dataStatus.textContent = 'Cargando información del evento y aforo...';
+      dataStatus.className = 'event-data-status';
+    } else if (state.connectionError) {
+      dataStatus.textContent = state.eventInfo
+        ? `No se pudo actualizar la información. Se muestran los últimos datos recibidos. ${state.connectionError}`
+        : `No se pudo cargar la información del evento. ${state.connectionError}`;
+      dataStatus.className = 'event-data-status event-data-error';
+    } else {
+      dataStatus.textContent = '';
+      dataStatus.className = 'event-data-status';
     }
   });
 
