@@ -5,6 +5,7 @@
  */
 import { store } from '../state/store.js';
 import { formatRemainingTime, getSeatExpiresAt } from '../utils/lockTimer.js';
+import { createIcon } from './Icon.js';
 
 export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheckout, onTimerExpired) {
   const panel = document.createElement('aside');
@@ -16,7 +17,10 @@ export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheck
 
   const title = document.createElement('h3');
   title.className = 'panel-title';
-  title.textContent = '🛒 Tu Selección';
+  title.appendChild(createIcon('cart'));
+  const titleText = document.createElement('span');
+  titleText.textContent = 'Tu selección';
+  title.appendChild(titleText);
 
   const countBadge = document.createElement('span');
   countBadge.className = 'badge badge-primary';
@@ -34,7 +38,7 @@ export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheck
 
   const timerIcon = document.createElement('span');
   timerIcon.className = 'timer-icon';
-  timerIcon.textContent = '⏱';
+  timerIcon.appendChild(createIcon('clock'));
 
   const timerTextGroup = document.createElement('div');
   timerTextGroup.className = 'timer-text-group';
@@ -86,7 +90,9 @@ export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheck
   checkoutBtn.type = 'button';
   checkoutBtn.className = 'btn btn-primary btn-block';
   checkoutBtn.id = 'btn-proceed-checkout';
-  checkoutBtn.textContent = '💳 Proceder al Pago';
+  const checkoutLabel = document.createElement('span');
+  checkoutLabel.textContent = 'Proceder al pago';
+  checkoutBtn.appendChild(checkoutLabel);
   checkoutBtn.disabled = true;
   checkoutBtn.addEventListener('click', onProceedCheckout);
 
@@ -196,7 +202,7 @@ export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheck
       `;
       totalValue.textContent = '$0 COP';
       checkoutBtn.disabled = actionsPending;
-      checkoutBtn.textContent = actionsPending ? 'Procesando solicitud...' : '💳 Proceder al Pago';
+      checkoutLabel.textContent = actionsPending ? 'Procesando solicitud...' : 'Proceder al pago';
       if (actionsPending) {
         checkoutBtn.setAttribute('aria-busy', 'true');
       } else {
@@ -265,7 +271,7 @@ export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheck
 
     totalValue.textContent = `$${total.toLocaleString('es-CO')} COP`;
     checkoutBtn.disabled = actionsPending;
-    checkoutBtn.textContent = actionsPending ? 'Procesando solicitud...' : '💳 Proceder al Pago';
+    checkoutLabel.textContent = actionsPending ? 'Procesando solicitud...' : 'Proceder al pago';
     if (actionsPending) {
       checkoutBtn.setAttribute('aria-busy', 'true');
     } else {

@@ -3,6 +3,7 @@
  * Modal/panel que lista las reservas confirmadas del usuario actual en el servidor.
  */
 import { store } from '../state/store.js';
+import { createIcon } from './Icon.js';
 
 export function createMyBookings(onClose) {
   const overlay = document.createElement('div');
@@ -22,7 +23,8 @@ export function createMyBookings(onClose) {
   const title = document.createElement('h3');
   title.id = 'bookings-modal-title';
   title.className = 'modal-title';
-  title.textContent = '🎟 Historial de Mis Compras';
+  title.appendChild(createIcon('ticket'));
+  title.appendChild(document.createTextNode('Historial de mis compras'));
 
   const closeBtn = document.createElement('button');
   closeBtn.className = 'modal-close-btn';

@@ -252,7 +252,7 @@ export function createCheckoutModal(onConfirmOrder, onClose) {
     isSubmitting = true;
     submitBtn.disabled = true;
     form.setAttribute('aria-busy', 'true');
-    submitBtn.textContent = '⏳ Procesando reserva en el servidor...';
+    submitBtn.textContent = 'Procesando reserva en el servidor...';
 
     try {
       const submittedSeats = (store.getState().myLockedSeats || []).map((seat) => seat.id);

@@ -15,16 +15,22 @@ function getErrorDetail(error) {
 
 function translateError(error, operationName) {
   let message;
+  let code = error.name || 'BookingApiError';
 
   if (error instanceof BookingApp.SeatNotFoundException) {
+    code = 'SeatNotFoundException';
     message = `No se encontró la silla solicitada.${getErrorDetail(error)}`;
   } else if (error instanceof BookingApp.SeatNotAvailableException) {
+    code = 'SeatNotAvailableException';
     message = `La silla ya no está disponible para bloquearla.${getErrorDetail(error)}`;
   } else if (error instanceof BookingApp.LockExpiredException) {
+    code = 'LockExpiredException';
     message = `El tiempo de bloqueo venció. Selecciona la silla y vuelve a intentarlo.${getErrorDetail(error)}`;
   } else if (error instanceof BookingApp.InvalidBookingException) {
+    code = 'InvalidBookingException';
     message = `Los datos de la reserva no son válidos.${getErrorDetail(error)}`;
   } else if (error instanceof BookingApp.BookingException) {
+    code = 'BookingException';
     message = `No se pudo completar la reserva.${getErrorDetail(error)}`;
   } else if (operationName === 'confirmar la compra') {
     message = 'No se recibió respuesta al confirmar la compra. Es posible que el servidor la haya procesado; consulta “Mis Compras” antes de volver a intentarlo.';
@@ -33,7 +39,8 @@ function translateError(error, operationName) {
   }
 
   const translatedError = new Error(message);
-  translatedError.name = error.name || 'BookingApiError';
+  translatedError.name = code;
+  translatedError.code = code;
   translatedError.reason = message;
   translatedError.cause = error;
   return translatedError;

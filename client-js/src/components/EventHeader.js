@@ -3,6 +3,7 @@
  * Muestra el título del evento, fecha, lugar, identificador de sesión y contadores de aforo.
  */
 import { store } from '../state/store.js';
+import { createIcon } from './Icon.js';
 
 export function createEventHeader(onRefresh, onToggleBookings) {
   const header = document.createElement('header');
@@ -106,14 +107,20 @@ export function createEventHeader(onRefresh, onToggleBookings) {
   bookingsBtn.type = 'button';
   bookingsBtn.className = 'btn btn-secondary';
   bookingsBtn.id = 'btn-toggle-bookings';
-  bookingsBtn.textContent = '🎟 Mis Compras';
+  bookingsBtn.appendChild(createIcon('ticket'));
+  const bookingsLabel = document.createElement('span');
+  bookingsLabel.textContent = 'Mis compras';
+  bookingsBtn.appendChild(bookingsLabel);
   bookingsBtn.addEventListener('click', onToggleBookings);
 
   const refreshBtn = document.createElement('button');
   refreshBtn.type = 'button';
   refreshBtn.className = 'btn btn-outline';
   refreshBtn.id = 'btn-refresh-data';
-  refreshBtn.textContent = '🔄 Actualizar';
+  refreshBtn.appendChild(createIcon('refresh'));
+  const refreshLabel = document.createElement('span');
+  refreshLabel.textContent = 'Actualizar';
+  refreshBtn.appendChild(refreshLabel);
   refreshBtn.title = 'Refrescar aforos y estado de sillas';
   refreshBtn.addEventListener('click', onRefresh);
 
@@ -147,18 +154,18 @@ export function createEventHeader(onRefresh, onToggleBookings) {
     liveBadge.className = `badge badge-live badge-${connectionLabel}`;
 
     refreshBtn.disabled = Boolean(state.isRefreshing);
-    refreshBtn.textContent = state.isRefreshing
+    refreshLabel.textContent = state.isRefreshing
       ? (state.isConnected ? 'Actualizando...' : 'Conectando...')
       : state.connectionError
         ? 'Reintentar conexión'
-        : '🔄 Actualizar';
+        : 'Actualizar';
     if (state.isRefreshing) {
       refreshBtn.setAttribute('aria-busy', 'true');
     } else {
       refreshBtn.removeAttribute('aria-busy');
     }
 
-    bookingsBtn.textContent = state.isLoadingBookings ? 'Consultando compras...' : '🎟 Mis Compras';
+    bookingsLabel.textContent = state.isLoadingBookings ? 'Consultando compras...' : 'Mis compras';
     if (state.isLoadingBookings) {
       bookingsBtn.setAttribute('aria-busy', 'true');
     } else {
@@ -171,8 +178,8 @@ export function createEventHeader(onRefresh, onToggleBookings) {
 
     if (state.eventInfo) {
       title.textContent = state.eventInfo.name || 'Icesi Live Arena';
-      dateSpan.textContent = `📅 ${state.eventInfo.date || 'Por definir'}`;
-      venueSpan.textContent = `📍 ${state.eventInfo.venue || 'Por definir'}`;
+      dateSpan.textContent = `Fecha: ${state.eventInfo.date || 'Por definir'}`;
+      venueSpan.textContent = `Lugar: ${state.eventInfo.venue || 'Por definir'}`;
 
       header.querySelector('#count-available').textContent = state.eventInfo.availableSeats;
       header.querySelector('#count-locked').textContent = state.eventInfo.lockedSeats;

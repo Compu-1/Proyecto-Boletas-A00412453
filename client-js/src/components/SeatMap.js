@@ -51,7 +51,7 @@ export function createSeatMap(onSeatToggle) {
   // Escenario
   const stage = document.createElement('div');
   stage.className = 'stage';
-  stage.textContent = '▲ ESCENARIO / TARIMA PRINCIPAL ▲';
+  stage.textContent = 'ESCENARIO';
 
   // Grid de sillas
   const gridContainer = document.createElement('div');
@@ -135,6 +135,13 @@ export function createSeatMap(onSeatToggle) {
 
     const sortedRows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
     const rowZone = (row) => row <= 'B' ? 'VIP' : row <= 'E' ? 'PLATEA' : 'GENERAL';
+    const zoneLabels = {
+      VIP: 'VIP',
+      PLATEA: 'Platea',
+      GENERAL: 'General',
+    };
+    let currentZone = null;
+    let zoneBlock = null;
 
     for (const rowKey of sortedRows) {
       const rowSeats = (rowsMap.get(rowKey) || []).sort((a, b) => a.number - b.number);
@@ -144,6 +151,19 @@ export function createSeatMap(onSeatToggle) {
 
       if (currentZoneFilter !== 'ALL' && zoneName !== currentZoneFilter) {
         continue;
+      }
+
+      if (zoneName !== currentZone) {
+        currentZone = zoneName;
+        zoneBlock = document.createElement('section');
+        zoneBlock.className = `seat-zone-block seat-zone-${zoneName.toLowerCase()}`;
+        zoneBlock.setAttribute('aria-label', `Zona ${zoneLabels[zoneName]}`);
+
+        const zoneHeader = document.createElement('h3');
+        zoneHeader.className = 'seat-zone-title';
+        zoneHeader.textContent = zoneLabels[zoneName];
+        zoneBlock.appendChild(zoneHeader);
+        gridContainer.appendChild(zoneBlock);
       }
 
       const rowDiv = document.createElement('div');
@@ -162,6 +182,7 @@ export function createSeatMap(onSeatToggle) {
         const isMyLock = stateValue === 1 && seat.lockedByClientId === myClientId;
         const isOtherLock = stateValue === 1 && !isMyLock;
         const isBooked = stateValue === 2;
+        const isPending = (state.pendingSeatIds || []).includes(seat.id);
         const stateLabel = isMyLock
           ? 'Bloqueada por ti'
           : isOtherLock
@@ -176,11 +197,16 @@ export function createSeatMap(onSeatToggle) {
         seatBtn.dataset.seatId = seat.id;
         seatBtn.setAttribute('aria-label', `Silla ${seat.id}, ${stateLabel.toLowerCase()}`);
         seatBtn.title = `Silla ${seat.id}: ${stateLabel}`;
+        seatBtn.disabled = isPending || isBooked || isOtherLock;
+        if (isPending) {
+          seatBtn.setAttribute('aria-busy', 'true');
+          seatBtn.title = `Procesando solicitud para la silla ${seat.id}`;
+        }
         seatBtn.textContent = seat.number;
 
         const stateMarker = document.createElement('span');
         stateMarker.className = 'seat-state-marker';
-        stateMarker.textContent = marker;
+        stateMarker.textContent = isPending ? '…' : marker;
         stateMarker.setAttribute('aria-hidden', 'true');
         seatBtn.appendChild(stateMarker);
 
@@ -190,7 +216,6 @@ export function createSeatMap(onSeatToggle) {
           seatBtn.classList.add('seat-other-locked');
         } else if (isBooked) {
           seatBtn.classList.add('seat-booked');
-          seatBtn.disabled = true;
         } else {
           seatBtn.classList.add('seat-available', `zone-${zoneName.toLowerCase()}`);
         }
@@ -200,10 +225,16 @@ export function createSeatMap(onSeatToggle) {
         });
 
         seatsWrapper.appendChild(seatBtn);
+        if (seat.number === 5) {
+          const aisle = document.createElement('span');
+          aisle.className = 'seat-aisle';
+          aisle.setAttribute('aria-hidden', 'true');
+          seatsWrapper.appendChild(aisle);
+        }
       }
 
       rowDiv.appendChild(seatsWrapper);
-      gridContainer.appendChild(rowDiv);
+      zoneBlock.appendChild(rowDiv);
 
       if (rowSeats.length !== 10) {
         const rowNotice = document.createElement('p');

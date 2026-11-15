@@ -365,7 +365,7 @@ function handleTimerExpired(expiredSeatIds) {
     myLockedSeats: (state.myLockedSeats || []).filter((seat) => !expiredIds.has(seat.id)),
   });
   const expiredLabels = expiredSeatIds.map((seatId) => ` ${seatId}`).join(',');
-  toast.show(`⏱ El bloqueo de${expiredLabels} expiró. Se actualizará el plano desde el servidor.`, 'warning', 6000);
+  toast.show(`El bloqueo de${expiredLabels} expiró. Se actualizará el plano desde el servidor.`, 'warning', 6000);
   handleCloseCheckout();
   syncData(true, true);
 }

@@ -1,3 +1,5 @@
+import { createIcon } from './Icon.js';
+
 /**
  * Componente Toast para notificaciones flotantes en pantalla.
  * Accesible, sin dependencias, con autocierre y soporte para tipos: info, success, warning, error.
@@ -34,10 +36,14 @@ class ToastManager {
 
     const icon = document.createElement('span');
     icon.className = 'toast-icon';
-    if (type === 'success') icon.textContent = '✔';
-    else if (type === 'error') icon.textContent = '✖';
-    else if (type === 'warning') icon.textContent = '⚠';
-    else icon.textContent = 'ℹ';
+    const iconName = type === 'success'
+      ? 'check'
+      : type === 'warning'
+        ? 'warning'
+        : type === 'error'
+          ? 'error'
+          : 'info';
+    icon.appendChild(createIcon(iconName));
 
     const text = document.createElement('span');
     text.className = 'toast-text';
@@ -46,7 +52,7 @@ class ToastManager {
     const closeBtn = document.createElement('button');
     closeBtn.className = 'toast-close';
     closeBtn.setAttribute('aria-label', 'Cerrar notificación');
-    closeBtn.textContent = '×';
+    closeBtn.appendChild(createIcon('close'));
     closeBtn.addEventListener('click', () => {
       this.remove(toast);
     });
