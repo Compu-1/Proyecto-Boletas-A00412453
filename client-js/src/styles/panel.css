@@ -4,7 +4,8 @@
   flex-direction: column;
   gap: 16px;
   position: sticky;
-  top: 20px;
+  top: 16px;
+  background: #fffefa;
 }
 
 .panel-header {
@@ -12,28 +13,33 @@
   justify-content: space-between;
   align-items: center;
   border-bottom: 1px solid var(--border);
-  padding-bottom: 12px;
+  padding-bottom: 14px;
 }
 
 .panel-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: inherit;
   font-size: 1.2rem;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--primary);
 }
 
 /* Temporizador de cuenta regresiva */
 .timer-widget {
-  background-color: var(--secondary-light);
-  border: 1px solid #ffcc80;
-  border-radius: 6px;
-  padding: 10px 14px;
+  background: #f3ece7;
+  border: 1px solid #ded0c8;
+  border-radius: 8px;
+  padding: 12px 14px;
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
 .timer-icon {
-  font-size: 1.5rem;
+  display: flex;
+  color: var(--secondary);
 }
 
 .timer-text-group {
@@ -43,29 +49,24 @@
 
 .timer-label {
   font-size: 0.75rem;
-  color: #795548;
+  color: #674333;
   font-weight: 600;
 }
 
 .timer-countdown {
   font-size: 1.3rem;
   font-weight: 800;
-  color: var(--secondary);
+  color: #762f3d;
   font-variant-numeric: tabular-nums;
   letter-spacing: 1px;
 }
 
 .timer-countdown.timer-warning {
-  color: #d97706;
+  color: #8a4b00;
 }
 
 .timer-countdown.timer-danger {
   color: var(--danger);
-  animation: blink 1s infinite;
-}
-
-@keyframes blink {
-  50% { opacity: 0.4; }
 }
 
 /* Lista de sillas en carrito */
@@ -74,42 +75,45 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding-right: 4px;
+  gap: 9px;
+  padding: 2px 4px 2px 0;
 }
 
 .empty-cart-message {
   text-align: center;
   padding: 30px 10px;
-  color: var(--text-muted);
+  color: #526873;
 }
 
 .empty-cart-message small {
   display: block;
   margin-top: 4px;
-  color: #94a3b8;
+  color: #48554d;
 }
 
 .cart-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 12px;
-  background-color: #f8fafc;
+  gap: 10px;
+  padding: 10px 12px;
+  background-color: #faf8f3;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 10px;
 }
 
 .cart-item-info {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px 8px;
   font-size: 0.9rem;
 }
 
 .item-zone-badge {
   font-size: 0.7rem;
-  background: #e2e8f0;
+  background: #e2eeef;
+  color: #29444f;
   padding: 2px 6px;
   border-radius: 4px;
   font-weight: 600;
@@ -121,7 +125,7 @@
 }
 
 .cart-item-countdown {
-  color: var(--secondary);
+  color: #923d30;
   font-size: 0.75rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
@@ -129,7 +133,7 @@
 }
 
 .cart-item-countdown.timer-warning {
-  color: #d97706;
+  color: #76512f;
 }
 
 .cart-item-countdown.timer-danger {
@@ -137,10 +141,13 @@
 }
 
 .cart-item-remove {
+  min-width: 44px;
+  min-height: 44px;
+  flex-shrink: 0;
   background: transparent;
   border: none;
   font-size: 1.2rem;
-  color: var(--text-muted);
+  color: #526873;
   cursor: pointer;
   line-height: 1;
   padding: 2px 6px;
@@ -148,8 +155,13 @@
 }
 
 .cart-item-remove:hover {
-  background-color: #fee2e2;
+  background-color: #fde7e3;
   color: var(--danger);
+}
+
+.cart-item-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 /* Resumen financiero */
@@ -171,4 +183,24 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+@media (max-width: 960px) {
+  .selection-panel {
+    position: static;
+  }
+}
+
+@media (max-width: 600px) {
+  .selection-panel {
+    gap: 14px;
+  }
+
+  .cart-items-list {
+    max-height: 240px;
+  }
+
+  .cart-item-info {
+    font-size: 0.85rem;
+  }
 }

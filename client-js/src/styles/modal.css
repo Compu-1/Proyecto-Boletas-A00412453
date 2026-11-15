@@ -9,8 +9,8 @@
   left: 0;
   width: 100vw;
   height: 100vh;
-  background-color: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(4px);
+  background-color: rgba(16, 45, 67, 0.62);
+  backdrop-filter: blur(3px);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -19,12 +19,15 @@
 }
 
 .modal-dialog {
-  background: white;
+  background: #fff;
   border-radius: var(--radius);
   box-shadow: var(--shadow-lg);
   width: 100%;
   max-width: 520px;
   overflow: hidden;
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
   animation: modal-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -47,17 +50,23 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
+  padding: 18px 22px;
   border-bottom: 1px solid var(--border);
 }
 
 .modal-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: inherit;
   font-size: 1.25rem;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--primary);
 }
 
 .modal-close-btn {
+  width: 44px;
+  height: 44px;
   background: transparent;
   border: none;
   font-size: 1.5rem;
@@ -70,15 +79,15 @@
 }
 
 .modal-body {
-  padding: 20px;
-  max-height: 75vh;
+  padding: clamp(16px, 4vw, 24px);
+  max-height: calc(100vh - 130px);
   overflow-y: auto;
 }
 
 .modal-order-summary {
-  background: #f8fafc;
+  background: #f5f9f8;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 10px;
   padding: 12px 16px;
   margin-bottom: 20px;
 }
@@ -97,8 +106,8 @@
 }
 
 .summary-chip {
-  background: #e0f2fe;
-  color: #0369a1;
+  background: #eee5e5;
+  color: #5b2934;
   font-size: 0.8rem;
   padding: 3px 8px;
   border-radius: 4px;
@@ -169,14 +178,14 @@
   flex-direction: column;
   gap: 16px;
   padding: 24px;
-  background: #f0fdf4;
-  border: 1px solid #86efac;
-  border-radius: 8px;
+  background: #f0e8e7;
+  border: 1px solid #d6b8bb;
+  border-radius: 11px;
 }
 
 .checkout-receipt h4 {
   font-size: 1.15rem;
-  color: #166534;
+  color: #5d2934;
 }
 
 .receipt-booking-code {
@@ -220,9 +229,9 @@
 }
 
 .booking-card-item {
-  background: #f8fafc;
+  background: #f7faf9;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 10px;
   padding: 12px 16px;
 }
 
@@ -264,11 +273,37 @@
 }
 
 @media (max-width: 640px) {
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 10px;
+  }
+
+  .modal-dialog {
+    max-height: calc(100vh - 20px);
+    border-radius: 16px 16px 10px 10px;
+  }
+
   .checkout-modal-dialog {
     max-width: 100%;
   }
 
+  .modal-header {
+    padding: 12px 14px 12px 18px;
+  }
+
+  .modal-body {
+    max-height: calc(100vh - 110px);
+  }
+
+  .modal-footer {
+    flex-wrap: wrap;
+  }
+
+  .modal-footer .btn {
+    flex: 1 1 140px;
+  }
+
   .checkout-receipt {
-    padding: 18px;
+    padding: 18px 16px;
   }
 }
