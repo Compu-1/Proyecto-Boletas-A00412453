@@ -18,6 +18,7 @@ export function createEventHeader(onRefresh, onToggleBookings) {
   const liveBadge = document.createElement('span');
   liveBadge.className = 'badge badge-live';
   liveBadge.textContent = '● EN VIVO';
+  liveBadge.setAttribute('role', 'status');
 
   const clientBadge = document.createElement('span');
   clientBadge.className = 'badge badge-client';
@@ -102,12 +103,14 @@ export function createEventHeader(onRefresh, onToggleBookings) {
   btnRow.className = 'header-btn-row';
 
   const bookingsBtn = document.createElement('button');
+  bookingsBtn.type = 'button';
   bookingsBtn.className = 'btn btn-secondary';
   bookingsBtn.id = 'btn-toggle-bookings';
   bookingsBtn.textContent = '🎟 Mis Compras';
   bookingsBtn.addEventListener('click', onToggleBookings);
 
   const refreshBtn = document.createElement('button');
+  refreshBtn.type = 'button';
   refreshBtn.className = 'btn btn-outline';
   refreshBtn.id = 'btn-refresh-data';
   refreshBtn.textContent = '🔄 Actualizar';
@@ -131,6 +134,37 @@ export function createEventHeader(onRefresh, onToggleBookings) {
 
   // Suscripción al store para actualización reactiva del encabezado
   store.subscribe((state) => {
+    const connectionLabel = state.isConnected
+      ? 'connected'
+      : state.connectionError
+        ? 'disconnected'
+        : 'connecting';
+    liveBadge.textContent = connectionLabel === 'connected'
+      ? '● CONECTADO'
+      : connectionLabel === 'disconnected'
+        ? '● SIN CONEXIÓN'
+        : '● CONECTANDO';
+    liveBadge.className = `badge badge-live badge-${connectionLabel}`;
+
+    refreshBtn.disabled = Boolean(state.isRefreshing);
+    refreshBtn.textContent = state.isRefreshing
+      ? (state.isConnected ? 'Actualizando...' : 'Conectando...')
+      : state.connectionError
+        ? 'Reintentar conexión'
+        : '🔄 Actualizar';
+    if (state.isRefreshing) {
+      refreshBtn.setAttribute('aria-busy', 'true');
+    } else {
+      refreshBtn.removeAttribute('aria-busy');
+    }
+
+    bookingsBtn.textContent = state.isLoadingBookings ? 'Consultando compras...' : '🎟 Mis Compras';
+    if (state.isLoadingBookings) {
+      bookingsBtn.setAttribute('aria-busy', 'true');
+    } else {
+      bookingsBtn.removeAttribute('aria-busy');
+    }
+
     if (state.clientId) {
       clientBadge.textContent = `Cliente: ${state.clientId}`;
     }
@@ -158,10 +192,19 @@ export function createEventHeader(onRefresh, onToggleBookings) {
       dataStatus.textContent = 'Cargando información del evento y aforo...';
       dataStatus.className = 'event-data-status';
     } else if (state.connectionError) {
-      dataStatus.textContent = state.eventInfo
+      const message = state.eventInfo
         ? `No se pudo actualizar la información. Se muestran los últimos datos recibidos. ${state.connectionError}`
         : `No se pudo cargar la información del evento. ${state.connectionError}`;
       dataStatus.className = 'event-data-status event-data-error';
+      dataStatus.replaceChildren(document.createTextNode(`${message} `));
+      const retryButton = document.createElement('button');
+      retryButton.type = 'button';
+      retryButton.className = 'btn btn-outline btn-retry';
+      retryButton.textContent = state.isRefreshing ? 'Reintentando...' : 'Reintentar ahora';
+      retryButton.disabled = Boolean(state.isRefreshing);
+      retryButton.setAttribute('aria-label', 'Reintentar conexión con el servidor');
+      retryButton.addEventListener('click', onRefresh);
+      dataStatus.appendChild(retryButton);
     } else {
       dataStatus.textContent = '';
       dataStatus.className = 'event-data-status';

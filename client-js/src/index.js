@@ -33,44 +33,84 @@ app.innerHTML = ''; // Limpiar cualquier contenido inicial
 
 // 3. Funciones de carga y sincronización con el servidor backend
 let latestSyncRequest = 0;
+let activeSyncPromise = null;
+let connectionFailureNotified = false;
 
-async function syncData(isSilent = false) {
+async function syncData(isSilent = false, refreshAfterCurrent = false) {
+  if (activeSyncPromise) {
+    if (!isSilent) store.setState({ isRefreshing: true });
+    try {
+      await activeSyncPromise;
+    } finally {
+      if (!isSilent) store.setState({ isRefreshing: false });
+    }
+    if (refreshAfterCurrent) {
+      return await syncData(isSilent);
+    }
+    return;
+  }
+
   const requestId = ++latestSyncRequest;
+  if (!isSilent) store.setState({ isRefreshing: true });
+
+  const syncRequest = (async () => {
+    try {
+      const [eventInfo, allSeats, myLocked, myBookings] = await Promise.all([
+        bookingApi.getEventInfo(),
+        bookingApi.getAllSeats(),
+        bookingApi.getMyLockedSeats(clientId),
+        bookingApi.getMyBookings(clientId),
+      ]);
+
+      if (requestId !== latestSyncRequest) return;
+
+      const recoveredConnection = connectionFailureNotified;
+      store.setState({
+        eventInfo,
+        seats: allSeats,
+        myLockedSeats: myLocked,
+        myBookings,
+        isConnected: true,
+        isLoading: false,
+        connectionError: null,
+      });
+
+      if (recoveredConnection) {
+        connectionFailureNotified = false;
+        toast.show('Conexión con el servidor restablecida. Los datos están actualizados.', 'success', 5000);
+      } else if (!isSilent) {
+        toast.show('Datos actualizados desde el servidor.', 'info', 2000);
+      }
+    } catch (err) {
+      if (requestId !== latestSyncRequest) return;
+
+      if (!connectionFailureNotified) {
+        console.error('[Error de sincronización con ZeroC Ice]:', err);
+      }
+      store.setState({
+        isConnected: false,
+        isLoading: false,
+        connectionError: err.message || 'Error al conectar con el servidor Ice.',
+      });
+      if (!connectionFailureNotified || !isSilent) {
+        toast.show(
+          'No hay conexión con el servidor. Se reintentará automáticamente cada 5 segundos; también puedes usar “Reintentar ahora”.',
+          'error',
+          8000
+        );
+      }
+      connectionFailureNotified = true;
+    }
+  })();
+  activeSyncPromise = syncRequest;
+
   try {
-    const [eventInfo, allSeats, myLocked, myBookings] = await Promise.all([
-      bookingApi.getEventInfo(),
-      bookingApi.getAllSeats(),
-      bookingApi.getMyLockedSeats(clientId),
-      bookingApi.getMyBookings(clientId),
-    ]);
-
-    if (requestId !== latestSyncRequest) return;
-
-    store.setState({
-      eventInfo,
-      seats: allSeats,
-      myLockedSeats: myLocked,
-      myBookings,
-      isConnected: true,
-      isLoading: false,
-      connectionError: null,
-    });
-
-    if (!isSilent) {
-      toast.show('Datos actualizados en tiempo real desde el servidor.', 'info', 2000);
+    await syncRequest;
+  } finally {
+    if (activeSyncPromise === syncRequest) {
+      activeSyncPromise = null;
     }
-  } catch (err) {
-    if (requestId !== latestSyncRequest) return;
-
-    console.error('[Error de sincronización con ZeroC Ice]:', err);
-    store.setState({
-      isConnected: false,
-      isLoading: false,
-      connectionError: err.message || 'Error al conectar con el servidor Ice.',
-    });
-    if (!isSilent) {
-      toast.show('No se pudo conectar con el servidor en ws://127.0.0.1:10002. Revisa que el backend Java esté corriendo (gradlew.bat runServer).', 'error', 6000);
-    }
+    if (!isSilent) store.setState({ isRefreshing: false });
   }
 }
 
@@ -140,10 +180,10 @@ async function handleSeatToggle(seat, isMyLock, isOtherLock, isBooked) {
       } else {
         toast.show(`No se pudo liberar la silla ${seat.id}; se actualizará su estado.`, 'warning');
       }
-      await syncData(true);
+      await syncData(true, true);
     } catch (err) {
       toast.show(`Error al liberar silla: ${err.message || err}`, 'error');
-      await syncData(true);
+      await syncData(true, true);
     } finally {
       setSeatOperationPending(seat.id, false);
     }
@@ -159,14 +199,14 @@ async function handleSeatToggle(seat, isMyLock, isOtherLock, isBooked) {
     } else {
       toast.show(`No fue posible bloquear la silla ${seat.id}: ${result.message}`, 'error');
     }
-    await syncData(true);
+    await syncData(true, true);
   } catch (err) {
     if (err.code === 'SeatNotAvailableException') {
       toast.show(`La silla ${seat.id} acaba de ser bloqueada por otra persona. El mapa se actualizará.`, 'warning');
     } else {
       toast.show(`No se pudo bloquear la silla ${seat.id}: ${err.message || 'Error de comunicación.'}`, 'error');
     }
-    await syncData(true);
+    await syncData(true, true);
   } finally {
     setSeatOperationPending(seat.id, false);
   }
@@ -176,7 +216,7 @@ async function handleReleaseSeat(seatId) {
   if (pendingSeatOperations.has(seatId)) return;
   const seat = (store.getState().myLockedSeats || []).find((item) => item.id === seatId);
   if (!seat) {
-    await syncData(true);
+    await syncData(true, true);
     return;
   }
 
@@ -189,10 +229,10 @@ async function handleReleaseSeat(seatId) {
     } else {
       toast.show(`No se pudo liberar la silla ${seatId}; se actualizará el carrito.`, 'warning');
     }
-    await syncData(true);
+    await syncData(true, true);
   } catch (err) {
     toast.show(`Error al liberar: ${err.message || err}`, 'error');
-    await syncData(true);
+    await syncData(true, true);
   } finally {
     setSeatOperationPending(seatId, false);
   }
@@ -200,20 +240,47 @@ async function handleReleaseSeat(seatId) {
 
 async function handleReleaseAll() {
   const locked = store.getState().myLockedSeats || [];
-  if (locked.length === 0) return;
+  if (
+    locked.length === 0 ||
+    store.getState().isReleasingAll ||
+    pendingSeatOperations.size > 0
+  ) return;
 
+  for (const seat of locked) pendingSeatOperations.add(seat.id);
+  store.setState({
+    isReleasingAll: true,
+    pendingSeatIds: Array.from(pendingSeatOperations),
+  });
   try {
+    const failedSeatIds = [];
     for (const s of locked) {
-      await bookingApi.releaseSeat(s.id, clientId);
+      try {
+        const released = await bookingApi.releaseSeat(s.id, clientId);
+        if (!released) failedSeatIds.push(s.id);
+      } catch (err) {
+        failedSeatIds.push(s.id);
+      }
     }
-    toast.show('Todas las sillas de tu carrito han sido liberadas.', 'info');
-    await syncData(true);
+    await syncData(true, true);
+    if (failedSeatIds.length > 0) {
+      toast.show(`No se pudieron liberar todas las sillas (${failedSeatIds.join(', ')}). El carrito se actualizó con el servidor.`, 'warning', 6000);
+    } else {
+      toast.show('Todas las sillas de tu carrito han sido liberadas.', 'info');
+    }
   } catch (err) {
     toast.show(`Error al liberar carrito: ${err.message || err}`, 'error');
+    await syncData(true, true);
+  } finally {
+    for (const seat of locked) pendingSeatOperations.delete(seat.id);
+    store.setState({
+      isReleasingAll: false,
+      pendingSeatIds: Array.from(pendingSeatOperations),
+    });
   }
 }
 
 function handleProceedCheckout() {
+  if (store.getState().isReleasingAll || pendingSeatOperations.size > 0) return;
   store.setState({ isCheckoutOpen: true });
 }
 
@@ -221,11 +288,16 @@ function handleCloseCheckout() {
   store.setState({ isCheckoutOpen: false });
 }
 
-function handleToggleBookings() {
+async function handleToggleBookings() {
   const current = store.getState().isBookingsOpen;
   store.setState({ isBookingsOpen: !current });
   if (!current) {
-    syncData(true);
+    store.setState({ isLoadingBookings: true });
+    try {
+      await syncData(true, true);
+    } finally {
+      store.setState({ isLoadingBookings: false });
+    }
   }
 }
 
@@ -236,7 +308,8 @@ function handleCloseBookings() {
 async function handleConfirmOrder({ customerName, customerEmail }) {
   const locked = store.getState().myLockedSeats || [];
   if (locked.length === 0) {
-    await syncData(true);
+    await syncData(true, true);
+    toast.show('Tu carrito está vacío o los bloqueos vencieron.', 'warning');
     return {
       success: false,
       message: 'Tu carrito está vacío o los bloqueos vencieron. El carrito y el plano se actualizaron.',
@@ -249,10 +322,17 @@ async function handleConfirmOrder({ customerName, customerEmail }) {
     const result = await bookingApi.confirmBooking(seatIds, clientId, customerName, customerEmail);
     if (result && result.success) {
       toast.show(`¡Compra exitosa! Código de reserva: ${result.bookingCode}`, 'success', 8000);
-      await syncData(true);
+      await syncData(true, true);
       return result;
     } else {
-      await syncData(true);
+      await syncData(true, true);
+      toast.show(
+        result && result.message
+          ? result.message
+          : 'El servidor no pudo completar la compra. Verifica las sillas de tu carrito.',
+        'error',
+        7000
+      );
       return {
         success: false,
         message: result && result.message
@@ -262,7 +342,7 @@ async function handleConfirmOrder({ customerName, customerEmail }) {
     }
   } catch (err) {
     console.error('[Error RPC confirmBooking]:', err);
-    await syncData(true);
+    await syncData(true, true);
     let message = err.reason || err.message || 'No se pudo procesar la compra.';
     if (err.code === 'LockExpiredException') {
       message = 'El tiempo de bloqueo de una o más sillas venció. El carrito se actualizó con las sillas que siguen reservadas.';
@@ -273,6 +353,7 @@ async function handleConfirmOrder({ customerName, customerEmail }) {
     } else if (/no está bloqueada|bloqueada por otro comprador/i.test(message)) {
       message = 'Una de las sillas ya no está bloqueada para tu sesión. El carrito y el plano se actualizaron desde el servidor.';
     }
+    toast.show(message, 'error', 7000);
     return { success: false, message };
   }
 }
@@ -286,7 +367,7 @@ function handleTimerExpired(expiredSeatIds) {
   const expiredLabels = expiredSeatIds.map((seatId) => ` ${seatId}`).join(',');
   toast.show(`⏱ El bloqueo de${expiredLabels} expiró. Se actualizará el plano desde el servidor.`, 'warning', 6000);
   handleCloseCheckout();
-  syncData(true);
+  syncData(true, true);
 }
 
 // 5. Ensamblaje de componentes en el DOM

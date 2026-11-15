@@ -37,11 +37,17 @@ export function createMyBookings(onClose) {
   const body = document.createElement('div');
   body.className = 'modal-body';
 
+  const loadingStatus = document.createElement('p');
+  loadingStatus.className = 'bookings-loading-status';
+  loadingStatus.setAttribute('role', 'status');
+  loadingStatus.setAttribute('aria-live', 'polite');
+
   const bookingsListContainer = document.createElement('div');
   bookingsListContainer.className = 'bookings-history-list';
   bookingsListContainer.id = 'bookings-history-list';
   bookingsListContainer.setAttribute('aria-live', 'polite');
 
+  body.appendChild(loadingStatus);
   body.appendChild(bookingsListContainer);
 
   const footer = document.createElement('div');
@@ -108,6 +114,12 @@ export function createMyBookings(onClose) {
         closeBtn.focus();
       }
       const list = state.myBookings || [];
+      loadingStatus.textContent = state.isLoadingBookings ? 'Consultando tus compras...' : '';
+
+      if (list.length === 0 && state.isLoadingBookings) {
+        bookingsListContainer.innerHTML = '';
+        return;
+      }
 
       if (list.length === 0) {
         bookingsListContainer.innerHTML = '';

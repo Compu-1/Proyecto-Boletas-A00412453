@@ -207,6 +207,12 @@
   gap: 12px;
 }
 
+.bookings-loading-status {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 10px;
+}
+
 .empty-bookings-box {
   text-align: center;
   padding: 40px 10px;

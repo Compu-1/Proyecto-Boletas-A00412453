@@ -83,6 +83,7 @@ export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheck
   actionsBox.className = 'panel-actions';
 
   const checkoutBtn = document.createElement('button');
+  checkoutBtn.type = 'button';
   checkoutBtn.className = 'btn btn-primary btn-block';
   checkoutBtn.id = 'btn-proceed-checkout';
   checkoutBtn.textContent = '💳 Proceder al Pago';
@@ -90,6 +91,7 @@ export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheck
   checkoutBtn.addEventListener('click', onProceedCheckout);
 
   const clearBtn = document.createElement('button');
+  clearBtn.type = 'button';
   clearBtn.className = 'btn btn-link btn-block';
   clearBtn.id = 'btn-clear-cart';
   clearBtn.textContent = 'Liberar todas las sillas';
@@ -178,6 +180,8 @@ export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheck
   // Suscripción al store para render reactivo
   store.subscribe((state) => {
     const mySeats = state.myLockedSeats || [];
+    const pendingSeatIds = state.pendingSeatIds || [];
+    const actionsPending = Boolean(state.isReleasingAll) || pendingSeatIds.length > 0;
     countBadge.textContent = `${mySeats.length} ${mySeats.length === 1 ? 'silla' : 'sillas'}`;
     activeSeats = mySeats;
     countdownElements = new Map();
@@ -191,7 +195,16 @@ export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheck
         </div>
       `;
       totalValue.textContent = '$0 COP';
-      checkoutBtn.disabled = true;
+      checkoutBtn.disabled = actionsPending;
+      checkoutBtn.textContent = actionsPending ? 'Procesando solicitud...' : '💳 Proceder al Pago';
+      if (actionsPending) {
+        checkoutBtn.setAttribute('aria-busy', 'true');
+      } else {
+        checkoutBtn.removeAttribute('aria-busy');
+      }
+      clearBtn.disabled = actionsPending;
+      clearBtn.textContent = state.isReleasingAll ? 'Liberando sillas...' : 'Liberar todas las sillas';
+      clearBtn.removeAttribute('aria-busy');
       clearBtn.style.display = 'none';
       return;
     }
@@ -236,7 +249,7 @@ export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheck
       removeBtn.innerHTML = '&times;';
       removeBtn.title = `Quitar silla ${seat.id} de la selección`;
       removeBtn.setAttribute('aria-label', `Quitar silla ${seat.id}`);
-      removeBtn.disabled = (state.pendingSeatIds || []).includes(seat.id);
+      removeBtn.disabled = pendingSeatIds.includes(seat.id) || Boolean(state.isReleasingAll);
       if (removeBtn.disabled) {
         removeBtn.setAttribute('aria-busy', 'true');
         removeBtn.title = `Procesando liberación de la silla ${seat.id}`;
@@ -251,7 +264,24 @@ export function createSelectionPanel(onReleaseSeat, onReleaseAll, onProceedCheck
     }
 
     totalValue.textContent = `$${total.toLocaleString('es-CO')} COP`;
-    checkoutBtn.disabled = false;
+    checkoutBtn.disabled = actionsPending;
+    checkoutBtn.textContent = actionsPending ? 'Procesando solicitud...' : '💳 Proceder al Pago';
+    if (actionsPending) {
+      checkoutBtn.setAttribute('aria-busy', 'true');
+    } else {
+      checkoutBtn.removeAttribute('aria-busy');
+    }
+    clearBtn.disabled = Boolean(state.isReleasingAll) || pendingSeatIds.length > 0;
+    clearBtn.textContent = state.isReleasingAll
+      ? 'Liberando sillas...'
+      : pendingSeatIds.length > 0
+        ? 'Procesando solicitud...'
+        : 'Liberar todas las sillas';
+    if (state.isReleasingAll || pendingSeatIds.length > 0) {
+      clearBtn.setAttribute('aria-busy', 'true');
+    } else {
+      clearBtn.removeAttribute('aria-busy');
+    }
     clearBtn.style.display = 'block';
 
     if (!timerInterval) {

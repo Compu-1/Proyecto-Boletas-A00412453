@@ -76,6 +76,16 @@ body {
   color: var(--danger);
 }
 
+.badge-live.badge-connected {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+.badge-live.badge-connecting {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
 .badge-client {
   background-color: #e0f2fe;
   color: #0369a1;
@@ -122,6 +132,10 @@ body {
   flex-basis: 100%;
   color: var(--text-muted);
   font-size: 0.85rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .event-data-status:empty {
@@ -130,6 +144,11 @@ body {
 
 .event-data-error {
   color: var(--danger);
+}
+
+.btn-retry {
+  padding: 5px 10px;
+  font-size: 0.8rem;
 }
 
 /* Contadores de aforo */
