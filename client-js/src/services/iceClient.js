@@ -145,6 +145,11 @@ export async function invokeBookingService(operation) {
     updateConnectionStatus(ConnectionStatus.CONNECTED);
     return result;
   } catch (error) {
+    if (error instanceof BookingApp.BookingException) {
+      updateConnectionStatus(ConnectionStatus.CONNECTED);
+      throw error;
+    }
+
     updateConnectionStatus(
       ConnectionStatus.DISCONNECTED,
       error.message || 'Error de enlace con el servidor Ice.'
