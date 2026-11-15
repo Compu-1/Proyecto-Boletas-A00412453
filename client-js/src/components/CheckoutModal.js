@@ -15,7 +15,7 @@ export function createCheckoutModal(onConfirmOrder, onClose) {
   overlay.setAttribute('aria-labelledby', 'modal-title');
 
   const dialog = document.createElement('div');
-  dialog.className = 'modal-dialog';
+  dialog.className = 'modal-dialog checkout-modal-dialog';
 
   // Cabecera del modal
   const header = document.createElement('div');
@@ -28,6 +28,7 @@ export function createCheckoutModal(onConfirmOrder, onClose) {
 
   const closeBtn = document.createElement('button');
   closeBtn.className = 'modal-close-btn';
+  closeBtn.type = 'button';
   closeBtn.innerHTML = '&times;';
   closeBtn.setAttribute('aria-label', 'Cerrar ventana de pago');
   closeBtn.addEventListener('click', onClose);
@@ -64,10 +65,13 @@ export function createCheckoutModal(onConfirmOrder, onClose) {
   nameInput.name = 'customerName';
   nameInput.placeholder = 'Ej. María Pérez';
   nameInput.required = true;
+  nameInput.autocomplete = 'name';
+  nameInput.setAttribute('aria-describedby', 'name-error');
 
   const nameError = document.createElement('span');
   nameError.className = 'form-error';
   nameError.id = 'name-error';
+  nameError.setAttribute('aria-live', 'polite');
 
   nameGroup.appendChild(nameLabel);
   nameGroup.appendChild(nameInput);
@@ -87,10 +91,13 @@ export function createCheckoutModal(onConfirmOrder, onClose) {
   emailInput.name = 'customerEmail';
   emailInput.placeholder = 'ejemplo@correo.com';
   emailInput.required = true;
+  emailInput.autocomplete = 'email';
+  emailInput.setAttribute('aria-describedby', 'email-error');
 
   const emailError = document.createElement('span');
   emailError.className = 'form-error';
   emailError.id = 'email-error';
+  emailError.setAttribute('aria-live', 'polite');
 
   emailGroup.appendChild(emailLabel);
   emailGroup.appendChild(emailInput);
@@ -112,6 +119,15 @@ export function createCheckoutModal(onConfirmOrder, onClose) {
   submitBtn.id = 'btn-confirm-order';
   submitBtn.textContent = 'Confirmar Compra Definitiva';
 
+  const submissionError = document.createElement('p');
+  submissionError.className = 'checkout-submit-error';
+  submissionError.setAttribute('role', 'alert');
+  submissionError.hidden = true;
+
+  const receipt = document.createElement('section');
+  receipt.className = 'checkout-receipt';
+  receipt.hidden = true;
+
   footer.appendChild(cancelBtn);
   footer.appendChild(submitBtn);
 
@@ -120,93 +136,202 @@ export function createCheckoutModal(onConfirmOrder, onClose) {
   form.appendChild(footer);
 
   body.appendChild(orderSummary);
+  body.appendChild(submissionError);
   body.appendChild(form);
+  body.appendChild(receipt);
 
   dialog.appendChild(header);
   dialog.appendChild(body);
   overlay.appendChild(dialog);
 
-  // Cerrar al hacer clic en el backdrop
+  let isOpen = false;
+  let isSubmitting = false;
+  let previousFocus = null;
+  let hasReceipt = false;
+
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) {
       onClose();
     }
   });
 
-  // Cerrar con Escape
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && overlay.style.display !== 'none') {
+    if (!isOpen) return;
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
       onClose();
+      return;
+    }
+
+    if (e.key === 'Tab') {
+      const focusable = Array.from(dialog.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )).filter((element) => !element.hidden && element.getClientRects().length > 0);
+
+      if (focusable.length === 0) {
+        e.preventDefault();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+        e.preventDefault();
+        first.focus();
+      }
     }
   });
 
-  // Validación y envío del formulario
+  function showReceipt(result, submittedSeats) {
+    hasReceipt = true;
+    orderSummary.hidden = true;
+    form.hidden = true;
+    receipt.hidden = false;
+    receipt.innerHTML = '';
+
+    const heading = document.createElement('h4');
+    heading.textContent = 'Compra confirmada';
+    heading.tabIndex = -1;
+
+    const code = document.createElement('p');
+    code.className = 'receipt-booking-code';
+    code.textContent = `Código de reserva: ${result.bookingCode}`;
+
+    const seats = document.createElement('p');
+    const seatIds = Array.isArray(result.seatIds) ? result.seatIds : submittedSeats;
+    seats.textContent = `Sillas: ${seatIds.join(', ')}`;
+
+    const total = document.createElement('p');
+    const amount = Number.isFinite(result.totalAmount) ? result.totalAmount : 0;
+    total.textContent = `Total pagado: $${amount.toLocaleString('es-CO')} COP`;
+
+    const doneBtn = document.createElement('button');
+    doneBtn.type = 'button';
+    doneBtn.className = 'btn btn-primary receipt-close-button';
+    doneBtn.textContent = 'Cerrar comprobante';
+    doneBtn.addEventListener('click', onClose);
+
+    receipt.append(heading, code, seats, total, doneBtn);
+    heading.focus();
+  }
+
+  function setFieldError(input, errorElement, message) {
+    errorElement.textContent = message;
+    input.classList.toggle('input-invalid', Boolean(message));
+    input.setAttribute('aria-invalid', message ? 'true' : 'false');
+  }
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (isSubmitting || hasReceipt) return;
 
-    let isValid = true;
     const nameVal = nameInput.value.trim();
     const emailVal = emailInput.value.trim();
     const emailRegex = /^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+    const nameIsValid = nameVal.length > 0;
+    const emailIsValid = emailInput.checkValidity() && emailRegex.test(emailVal);
 
-    if (!nameVal || nameVal.length < 3) {
-      nameError.textContent = 'Por favor ingresa tu nombre completo (mínimo 3 caracteres).';
-      nameInput.classList.add('input-invalid');
-      isValid = false;
-    } else {
-      nameError.textContent = '';
-      nameInput.classList.remove('input-invalid');
+    setFieldError(nameInput, nameError, nameIsValid ? '' : 'Ingresa tu nombre.');
+    setFieldError(
+      emailInput,
+      emailError,
+      emailIsValid ? '' : 'Ingresa un correo válido, por ejemplo usuario@dominio.com.'
+    );
+    submissionError.hidden = true;
+    submissionError.textContent = '';
+
+    if (!nameIsValid || !emailIsValid) {
+      (nameIsValid ? emailInput : nameInput).focus();
+      return;
     }
 
-    if (!emailVal || !emailRegex.test(emailVal)) {
-      emailError.textContent = 'Ingresa una dirección de correo válida (ej. usuario@dominio.com).';
-      emailInput.classList.add('input-invalid');
-      isValid = false;
-    } else {
-      emailError.textContent = '';
-      emailInput.classList.remove('input-invalid');
-    }
-
-    if (!isValid) return;
-
+    isSubmitting = true;
     submitBtn.disabled = true;
+    form.setAttribute('aria-busy', 'true');
     submitBtn.textContent = '⏳ Procesando reserva en el servidor...';
 
     try {
-      await onConfirmOrder({
+      const submittedSeats = (store.getState().myLockedSeats || []).map((seat) => seat.id);
+      const result = await onConfirmOrder({
         customerName: nameVal,
         customerEmail: emailVal,
       });
-      form.reset();
+      if (result && result.success) {
+        if (isOpen) {
+          form.reset();
+          showReceipt(result, submittedSeats);
+        }
+      } else {
+        submissionError.textContent = result && result.message
+          ? result.message
+          : 'No se pudo confirmar la compra. Revisa el carrito e inténtalo de nuevo.';
+        submissionError.hidden = false;
+      }
+    } catch (error) {
+      submissionError.textContent = error.message || 'No se pudo confirmar la compra. Inténtalo de nuevo.';
+      submissionError.hidden = false;
     } finally {
+      isSubmitting = false;
       submitBtn.disabled = false;
       submitBtn.textContent = 'Confirmar Compra Definitiva';
+      form.removeAttribute('aria-busy');
     }
   });
 
-  // Suscripción al store para visibilidad y datos
+  function renderOrderSummary(seats) {
+    orderSummary.innerHTML = '';
+    const title = document.createElement('h4');
+    title.textContent = `Resumen de tu pedido (${seats.length} ${seats.length === 1 ? 'silla' : 'sillas'}):`;
+    orderSummary.appendChild(title);
+
+    const chips = document.createElement('div');
+    chips.className = 'summary-chips';
+    for (const seat of seats) {
+      const chip = document.createElement('span');
+      chip.className = 'summary-chip';
+      chip.textContent = `Silla ${seat.id} ($${seat.price.toLocaleString('es-CO')})`;
+      chips.appendChild(chip);
+    }
+    orderSummary.appendChild(chips);
+
+    const total = seats.reduce((sum, seat) => sum + seat.price, 0);
+    const totalText = document.createElement('p');
+    totalText.className = 'summary-total-price';
+    totalText.textContent = `Total a Pagar: $${total.toLocaleString('es-CO')} COP`;
+    orderSummary.appendChild(totalText);
+  }
+
   store.subscribe((state) => {
-    if (state.isCheckoutOpen) {
+    const shouldBeOpen = Boolean(state.isCheckoutOpen);
+    if (shouldBeOpen && !isOpen) {
+      previousFocus = document.activeElement;
+      isOpen = true;
       overlay.style.display = 'flex';
-
-      const seats = state.myLockedSeats || [];
-      const total = seats.reduce((acc, s) => acc + s.price, 0);
-
-      orderSummary.innerHTML = `
-        <h4>Resumen de tu pedido (${seats.length} ${seats.length === 1 ? 'silla' : 'sillas'}):</h4>
-        <div class="summary-chips">
-          ${seats.map((s) => `<span class="summary-chip">Silla ${s.id} ($${s.price.toLocaleString('es-CO')})</span>`).join('')}
-        </div>
-        <p class="summary-total-price">Total a Pagar: <strong>$${total.toLocaleString('es-CO')} COP</strong></p>
-      `;
-
-      setTimeout(() => nameInput.focus(), 100);
-    } else {
+      hasReceipt = false;
+      orderSummary.hidden = false;
+      form.hidden = false;
+      receipt.hidden = true;
+      submissionError.hidden = true;
+      setFieldError(nameInput, nameError, '');
+      setFieldError(emailInput, emailError, '');
+      renderOrderSummary(state.myLockedSeats || []);
+      nameInput.focus();
+    } else if (shouldBeOpen && !hasReceipt) {
+      renderOrderSummary(state.myLockedSeats || []);
+    } else if (!shouldBeOpen && isOpen) {
+      isOpen = false;
       overlay.style.display = 'none';
-      nameError.textContent = '';
-      emailError.textContent = '';
-      nameInput.classList.remove('input-invalid');
-      emailInput.classList.remove('input-invalid');
+      setFieldError(nameInput, nameError, '');
+      setFieldError(emailInput, emailError, '');
+      submissionError.hidden = true;
+      if (previousFocus && typeof previousFocus.focus === 'function') {
+        previousFocus.focus();
+      }
+      previousFocus = null;
     }
   });
 

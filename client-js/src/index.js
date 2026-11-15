@@ -224,6 +224,9 @@ function handleCloseCheckout() {
 function handleToggleBookings() {
   const current = store.getState().isBookingsOpen;
   store.setState({ isBookingsOpen: !current });
+  if (!current) {
+    syncData(true);
+  }
 }
 
 function handleCloseBookings() {
@@ -233,9 +236,11 @@ function handleCloseBookings() {
 async function handleConfirmOrder({ customerName, customerEmail }) {
   const locked = store.getState().myLockedSeats || [];
   if (locked.length === 0) {
-    toast.show('Tu carrito está vacío o tus bloqueos expiraron.', 'warning');
-    handleCloseCheckout();
-    return;
+    await syncData(true);
+    return {
+      success: false,
+      message: 'Tu carrito está vacío o los bloqueos vencieron. El carrito y el plano se actualizaron.',
+    };
   }
 
   const seatIds = locked.map((s) => s.id);
@@ -243,18 +248,32 @@ async function handleConfirmOrder({ customerName, customerEmail }) {
   try {
     const result = await bookingApi.confirmBooking(seatIds, clientId, customerName, customerEmail);
     if (result && result.success) {
-      handleCloseCheckout();
       toast.show(`¡Compra exitosa! Código de reserva: ${result.bookingCode}`, 'success', 8000);
       await syncData(true);
+      return result;
     } else {
-      toast.show(`Error en la reserva: ${result.message}`, 'error', 6000);
       await syncData(true);
+      return {
+        success: false,
+        message: result && result.message
+          ? result.message
+          : 'El servidor no pudo completar la compra. Verifica las sillas de tu carrito.',
+      };
     }
   } catch (err) {
     console.error('[Error RPC confirmBooking]:', err);
-    const msg = err.reason || err.message || 'Error al procesar la reserva con el servidor.';
-    toast.show(`No se pudo confirmar la compra: ${msg}`, 'error', 7000);
     await syncData(true);
+    let message = err.reason || err.message || 'No se pudo procesar la compra.';
+    if (err.code === 'LockExpiredException') {
+      message = 'El tiempo de bloqueo de una o más sillas venció. El carrito se actualizó con las sillas que siguen reservadas.';
+    } else if (err.code === 'SeatNotAvailableException') {
+      message = 'Una o más sillas ya no están disponibles. El carrito y el plano se actualizaron desde el servidor.';
+    } else if (/ya fue vendida/i.test(message)) {
+      message = 'Una de las sillas ya fue vendida. El carrito y el plano se actualizaron desde el servidor.';
+    } else if (/no está bloqueada|bloqueada por otro comprador/i.test(message)) {
+      message = 'Una de las sillas ya no está bloqueada para tu sesión. El carrito y el plano se actualizaron desde el servidor.';
+    }
+    return { success: false, message };
   }
 }
 

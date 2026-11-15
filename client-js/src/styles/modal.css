@@ -1,4 +1,8 @@
 /* Estilos de Modales (Checkout y Mis Compras) */
+.modal-overlay [hidden] {
+  display: none;
+}
+
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -22,6 +26,10 @@
   max-width: 520px;
   overflow: hidden;
   animation: modal-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.checkout-modal-dialog {
+  max-width: 640px;
 }
 
 @keyframes modal-enter {
@@ -148,6 +156,42 @@
   min-height: 18px;
 }
 
+.checkout-submit-error {
+  color: var(--danger);
+  background: #fffbfa;
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.checkout-receipt {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 8px;
+}
+
+.checkout-receipt h4 {
+  font-size: 1.15rem;
+  color: #166534;
+}
+
+.receipt-booking-code {
+  font-weight: 800;
+  color: var(--primary);
+  overflow-wrap: anywhere;
+}
+
+.receipt-close-button {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 8px;
+  font-size: 1rem;
+}
+
 .modal-footer {
   display: flex;
   justify-content: flex-end;
@@ -211,4 +255,14 @@
   margin-top: 6px;
   color: var(--accent);
   font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .checkout-modal-dialog {
+    max-width: 100%;
+  }
+
+  .checkout-receipt {
+    padding: 18px;
+  }
 }

@@ -26,6 +26,7 @@ export function createMyBookings(onClose) {
 
   const closeBtn = document.createElement('button');
   closeBtn.className = 'modal-close-btn';
+  closeBtn.type = 'button';
   closeBtn.innerHTML = '&times;';
   closeBtn.setAttribute('aria-label', 'Cerrar historial');
   closeBtn.addEventListener('click', onClose);
@@ -39,6 +40,7 @@ export function createMyBookings(onClose) {
   const bookingsListContainer = document.createElement('div');
   bookingsListContainer.className = 'bookings-history-list';
   bookingsListContainer.id = 'bookings-history-list';
+  bookingsListContainer.setAttribute('aria-live', 'polite');
 
   body.appendChild(bookingsListContainer);
 
@@ -61,18 +63,62 @@ export function createMyBookings(onClose) {
     if (e.target === overlay) onClose();
   });
 
+  let isOpen = false;
+  let previousFocus = null;
+
+  document.addEventListener('keydown', (e) => {
+    if (!isOpen) return;
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      onClose();
+      return;
+    }
+
+    if (e.key === 'Tab') {
+      const focusable = Array.from(dialog.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )).filter((element) => !element.hidden && element.getClientRects().length > 0);
+
+      if (focusable.length === 0) {
+        e.preventDefault();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  });
+
   store.subscribe((state) => {
     if (state.isBookingsOpen) {
+      if (!isOpen) {
+        previousFocus = document.activeElement;
+        isOpen = true;
+      }
       overlay.style.display = 'flex';
+      if (previousFocus && !dialog.contains(document.activeElement)) {
+        closeBtn.focus();
+      }
       const list = state.myBookings || [];
 
       if (list.length === 0) {
-        bookingsListContainer.innerHTML = `
-          <div class="empty-bookings-box">
-            <p>No tienes reservas confirmadas aún con esta sesión (${state.clientId}).</p>
-            <small>Completa una compra en el carrito para recibir tu código de reserva.</small>
-          </div>
-        `;
+        bookingsListContainer.innerHTML = '';
+        const emptyMessage = document.createElement('div');
+        emptyMessage.className = 'empty-bookings-box';
+        const message = document.createElement('p');
+        message.textContent = `No tienes reservas confirmadas aún con esta sesión (${state.clientId}).`;
+        const hint = document.createElement('small');
+        hint.textContent = 'Completa una compra en el carrito para recibir tu código de reserva.';
+        emptyMessage.append(message, hint);
+        bookingsListContainer.appendChild(emptyMessage);
         return;
       }
 
@@ -81,25 +127,45 @@ export function createMyBookings(onClose) {
         const item = document.createElement('div');
         item.className = 'booking-card-item';
 
-        const dateStr = booking.timestamp ? new Date(Number(booking.timestamp)).toLocaleString('es-CO') : 'Reciente';
+        const timestamp = booking.timestamp && typeof booking.timestamp.toNumber === 'function'
+          ? booking.timestamp.toNumber()
+          : Number(booking.timestamp);
+        const dateStr = timestamp ? new Date(timestamp).toLocaleString('es-CO') : 'Reciente';
         const seatsStr = Array.isArray(booking.seatIds) ? booking.seatIds.join(', ') : '';
 
-        item.innerHTML = `
-          <div class="booking-item-header">
-            <span class="booking-code">${booking.bookingCode}</span>
-            <span class="booking-date">${dateStr}</span>
-          </div>
-          <div class="booking-item-body">
-            <p><strong>Comprador:</strong> ${booking.customerName} (${booking.customerEmail})</p>
-            <p><strong>Sillas adquiridas:</strong> <span class="badge-seats">${seatsStr}</span></p>
-            <p class="booking-item-total"><strong>Total Pagado:</strong> $${booking.totalAmount.toLocaleString('es-CO')} COP</p>
-          </div>
-        `;
+        const itemHeader = document.createElement('div');
+        itemHeader.className = 'booking-item-header';
+        const code = document.createElement('span');
+        code.className = 'booking-code';
+        code.textContent = booking.bookingCode;
+        const date = document.createElement('span');
+        date.className = 'booking-date';
+        date.textContent = dateStr;
+        itemHeader.append(code, date);
 
+        const itemBody = document.createElement('div');
+        itemBody.className = 'booking-item-body';
+        const buyer = document.createElement('p');
+        buyer.textContent = `Comprador: ${booking.customerName} (${booking.customerEmail})`;
+        const seatList = document.createElement('p');
+        seatList.textContent = `Sillas adquiridas: ${seatsStr}`;
+        const total = document.createElement('p');
+        total.className = 'booking-item-total';
+        total.textContent = `Total pagado: $${booking.totalAmount.toLocaleString('es-CO')} COP`;
+        itemBody.append(buyer, seatList, total);
+
+        item.append(itemHeader, itemBody);
         bookingsListContainer.appendChild(item);
       }
     } else {
       overlay.style.display = 'none';
+      if (isOpen) {
+        isOpen = false;
+        if (previousFocus && typeof previousFocus.focus === 'function') {
+          previousFocus.focus();
+        }
+        previousFocus = null;
+      }
     }
   });
 
