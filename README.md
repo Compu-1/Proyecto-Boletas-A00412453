@@ -1,5 +1,7 @@
 # Icesi Live Arena — Reserva de boletas
 
+VIDEO: https://youtu.be/ICNN-C2ylmU?si=tFb8T3Fr42Y99XIa
+
 Aplicación distribuida de reserva de boletas para el curso Computación en Internet I. El backend está desarrollado en Java con ZeroC Ice y el frontend en JavaScript Vanilla con Webpack. El navegador se comunica con el servidor usando el protocolo Ice sobre WebSocket; no se usan frameworks de interfaz.
 
 ## Requisitos
